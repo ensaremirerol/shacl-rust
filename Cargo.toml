@@ -7,7 +7,6 @@ description = "A SHACL (Shapes Constraint Language) validator for RDF graphs"
 license = "MIT"
 repository = "https://github.com/ensaremirerol/shacl-rust"
 keywords = ["shacl", "rdf", "validation", "semantic-web"]
-categories = ["data-structures", "parser-implementations"]
 
 [lib]
 name = "shacl_rust"
@@ -19,11 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 # RDF handling
-oxigraph = "0.4"
-
-# Error handling
-thiserror = "1.0"
-anyhow = "1.0"
+oxigraph = "0.5.5"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
