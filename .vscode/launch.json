@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug with args",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=shacl-validator",
+                    "--package=shacl-rust"
+                ],
+                "filter": {
+                    "name": "shacl-validator",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "validate",
+                "tests/resources/core/node/or-001.ttl",
+                "tests/resources/core/node/or-001.ttl"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

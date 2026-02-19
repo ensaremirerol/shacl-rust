@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SHACL Validator (WASM)</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            background: #111827;
+            color: #e5e7eb;
+        }
+
+        main {
+            max-width: 96vw;
+            margin: 1rem auto;
+            padding: 0 0.75rem;
+        }
+
+        h1 {
+            margin: 0;
+        }
+
+        .header {
+            margin-bottom: 0.75rem;
+        }
+
+        .card {
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 0.8rem;
+            border: 1px solid #374151;
+        }
+
+        .grid {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .grid-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        @media (max-width: 900px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        label {
+            font-size: 0.92rem;
+            color: #d1d5db;
+        }
+
+        select,
+        button,
+        textarea {
+            font: inherit;
+        }
+
+        select,
+        button {
+            background: #111827;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+            border-radius: 8px;
+            padding: 0.45rem 0.6rem;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 180px;
+            resize: vertical;
+            border: 1px solid #4b5563;
+            border-radius: 8px;
+            padding: 0.65rem;
+            background: #111827;
+            color: #f3f4f6;
+        }
+
+        .editor {
+            min-height: 64vh;
+            border: 1px solid #4b5563;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .editor .cm-editor {
+            height: 64vh;
+        }
+
+        .editor .cm-scroller {
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.6rem;
+            margin: 0.75rem 0;
+        }
+
+        .toolbar .spacer {
+            flex: 1;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status {
+            margin: 0.35rem 0 0.75rem;
+        }
+
+        .ok {
+            color: #34d399;
+        }
+
+        .err {
+            color: #f87171;
+        }
+
+        code {
+            background: #111827;
+            padding: 0.1rem 0.35rem;
+            border-radius: 6px;
+        }
+
+        .file-input {
+            max-width: 220px;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 900px) {
+            .editor {
+                min-height: 42vh;
+            }
+
+            .editor .cm-editor {
+                height: 42vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <div class="header">
+            <h1>SHACL Validator (WASM)</h1>
+            <p>Validate a data graph against SHACL shapes directly in your browser.</p>
+        </div>
+
+        <div class="grid grid-2">
+            <section class="card">
+                <div class="label-row">
+                    <label for="data-format">Data graph format</label>
+                    <select id="data-format">
+                        <option value="ttl">Turtle (.ttl)</option>
+                        <option value="nt">N-Triples (.nt)</option>
+                        <option value="nq">N-Quads (.nq)</option>
+                        <option value="rdf">RDF/XML (.rdf)</option>
+                        <option value="jsonld">JSON-LD (.jsonld)</option>
+                        <option value="trig">TriG (.trig)</option>
+                    </select>
+                </div>
+                <div class="label-row">
+                    <label for="data-file">Data graph file</label>
+                    <input id="data-file" class="file-input" type="file"
+                        accept=".ttl,.nt,.nq,.rdf,.xml,.jsonld,.json,.trig,text/turtle,application/n-triples,application/n-quads,application/rdf+xml,application/ld+json,application/trig" />
+                </div>
+                <div id="data-graph-editor" class="editor"></div>
+            </section>
+
+            <section class="card">
+                <div class="label-row">
+                    <label for="shapes-format">Shapes graph format</label>
+                    <select id="shapes-format">
+                        <option value="ttl">Turtle (.ttl)</option>
+                        <option value="nt">N-Triples (.nt)</option>
+                        <option value="nq">N-Quads (.nq)</option>
+                        <option value="rdf">RDF/XML (.rdf)</option>
+                        <option value="jsonld">JSON-LD (.jsonld)</option>
+                        <option value="trig">TriG (.trig)</option>
+                    </select>
+                </div>
+                <div class="label-row">
+                    <label for="shapes-file">Shapes graph file</label>
+                    <input id="shapes-file" class="file-input" type="file"
+                        accept=".ttl,.nt,.nq,.rdf,.xml,.jsonld,.json,.trig,text/turtle,application/n-triples,application/n-quads,application/rdf+xml,application/ld+json,application/trig" />
+                </div>
+                <div id="shapes-graph-editor" class="editor"></div>
+            </section>
+        </div>
+
+        <div class="toolbar">
+            <label for="output-type">Output</label>
+            <select id="output-type">
+                <option value="text">Text</option>
+                <option value="json">JSON</option>
+                <option value="rdf">RDF</option>
+            </select>
+
+            <label id="rdf-output-label" class="hidden" for="rdf-output-format">RDF format</label>
+            <select id="rdf-output-format" class="hidden">
+                <option value="ttl">Turtle (.ttl)</option>
+                <option value="nt">N-Triples (.nt)</option>
+                <option value="nq">N-Quads (.nq)</option>
+                <option value="rdf">RDF/XML (.rdf)</option>
+                <option value="jsonld">JSON-LD (.jsonld)</option>
+                <option value="trig">TriG (.trig)</option>
+            </select>
+
+            <span class="spacer"></span>
+            <button id="validate-btn">Validate</button>
+        </div>
+
+        <p id="status" class="status">Loading WebAssembly package...</p>
+
+        <section class="card">
+            <div class="label-row">
+                <label for="output">Validation report</label>
+            </div>
+            <textarea id="output" spellcheck="false" readonly></textarea>
+        </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+</body>
+
+</html>

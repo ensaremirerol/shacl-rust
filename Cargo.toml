@@ -1,0 +1,45 @@
+[package]
+name = "shacl-rust"
+version = "0.1.0"
+edition = "2021"
+authors = [""]
+description = "A SHACL (Shapes Constraint Language) validator for RDF graphs"
+license = "MIT"
+repository = "https://github.com/ensaremirerol/shacl-rust"
+keywords = ["shacl", "rdf", "validation", "semantic-web"]
+
+[workspace]
+members = ["crates/shacl-cli", "crates/shacl-wasm"]
+
+[lib]
+name = "shacl_rust"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[dependencies]
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# Logging
+log = "0.4"
+
+# Regular expressions for pattern matching
+regex = "1.10"
+
+# SPARQL parser/algebra inspection
+spargebra = "0.4.5"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+# RDF handling
+oxigraph = "0.5.5"
+
+# Parallel processing
+rayon = "1.10"
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+# wasm-safe oxigraph build
+oxigraph = { version = "0.5.5", default-features = false, features = ["js"] }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.10"
