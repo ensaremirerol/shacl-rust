@@ -7,6 +7,7 @@ description = "A SHACL (Shapes Constraint Language) validator for RDF graphs"
 license = "MIT"
 repository = "https://github.com/ensaremirerol/shacl-rust"
 keywords = ["shacl", "rdf", "validation", "semantic-web"]
+exclude = ["tests/*"]
 
 [workspace]
 members = ["crates/shacl-cli", "crates/shacl-wasm", "crates/shacl-mcp"]
