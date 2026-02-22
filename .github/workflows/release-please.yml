@@ -25,4 +25,32 @@ jobs:
                   manifest-file: .github/.release-please-manifest.json
                   target-branch: main
 
-    # This job no longer needed - publishing happens in separate workflow
+    publish-crates:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Rust
+              uses: actions-rust-lang/setup-rust-toolchain@v1
+              with:
+                  toolchain: stable
+
+            - name: Publish shacl-rust (main crate)
+              run: |
+                  cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+
+            # Wait for crates.io index to update
+            - name: Wait for crates.io index update
+              run: sleep 45
+
+            - name: Publish shacl-cli
+              run: cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+
+            - name: Publish shacl-mcp
+              run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+
+            - name: Publish shacl-wasm
+              run: cargo publish --package shacl-wasm --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
