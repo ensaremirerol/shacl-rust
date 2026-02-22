@@ -26,7 +26,10 @@ use self::{path::parse_path, target::parse_targets};
 /// Parses all SHACL shapes from a graph.
 pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
     debug!("Starting shape parsing");
+
+    #[cfg(not(target_family = "wasm"))]
     let time = std::time::Instant::now();
+
     let mut shapes = Vec::new();
     let mut visited = HashSet::new();
 
@@ -51,7 +54,9 @@ pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
         }
     }
 
+    #[cfg(not(target_family = "wasm"))]
     debug!("Finished shape parsing at {}", time.elapsed().as_secs_f64());
+
     debug!("Total shapes parsed: {}", shapes.len());
     Ok(shapes)
 }
