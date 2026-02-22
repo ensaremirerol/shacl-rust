@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.2...shacl-rust-v0.1.3) (2026-02-22)
+
+
+### Features
+
+* **ci:** configure release-please to create PRs from dev to main ([ab7c1d4](https://github.com/ensaremirerol/shacl-rust/commit/ab7c1d45f8b7cafecaa73dafb2d9583029d59ebd))
+
+
+### Bug Fixes
+
+* **ci:** simplify publish conditions to work with any release ([91db136](https://github.com/ensaremirerol/shacl-rust/commit/91db136bc7ba4ada629a87e74fea510e5a2fb2c5))
+
 ## [0.1.2](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.1...shacl-rust-v0.1.2) (2026-02-22)
 
 
