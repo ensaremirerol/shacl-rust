@@ -9,10 +9,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use shacl_rust::{
-    core::ShapesInfo,
-    validation::dataset::ValidationDataset,
-};
+use shacl_rust::{core::ShapesInfo, validation::dataset::ValidationDataset};
 use shacl_rust::{
     parse_shapes, rdf::read_graph_from_string, rdf::serialize_graph_to_string, validate,
 };
