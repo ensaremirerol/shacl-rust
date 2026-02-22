@@ -3,6 +3,7 @@ name: Release Please
 on:
     push:
         branches:
+            - dev
             - main
 
 permissions:
@@ -26,10 +27,11 @@ jobs:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   config-file: .github/release-please-config.json
                   manifest-file: .github/.release-please-manifest.json
+                  target-branch: ${{ github.ref_name }}
 
     publish-crates:
         needs: release-please
-        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        if: ${{ needs.release-please.outputs.releases_created == 'true' && github.ref == 'refs/heads/main' }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout code
