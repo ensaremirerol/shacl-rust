@@ -1,6 +1,6 @@
 [package]
 name = "shacl-mcp"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Ensar Emir EROL"]
 description = "MCP (Model Context Protocol) server for shacl-rust"
@@ -13,7 +13,7 @@ name = "shacl-mcp"
 path = "src/main.rs"
 
 [dependencies]
-shacl-rust = { version = "0.1.1", path = "../.." }
+shacl-rust = { version = "0.1.2", path = "../.." }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 oxigraph = { version = "0.5.5", default-features = true }
