@@ -203,11 +203,7 @@ impl<'a> Shape<'a> {
             .iter()
             .map(|&focus_node| {
                 let mut node_report = ValidationReport::new();
-                self.validate_focus_node(
-                    validation_dataset.data_graph(),
-                    focus_node,
-                    &mut node_report,
-                );
+                self.validate_focus_node(validation_dataset, focus_node, &mut node_report);
                 node_report
             })
             .collect();
