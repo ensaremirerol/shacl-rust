@@ -450,17 +450,21 @@ fn test_shacl_conformance() {
                 match parser::parse_shapes(&shapes_graph) {
                     Ok(shapes) => {
                         // Create validation dataset
-                        let validation_dataset = match validation::dataset::ValidationDataset::from_graphs(
-                            data_graph.clone(),
-                            shapes_graph.clone(),
-                        ) {
-                            Ok(dataset) => dataset,
-                            Err(e) => {
-                                println!("❌ FAIL: {} (failed to create validation dataset: {})", test_name, e);
-                                failed += 1;
-                                continue;
-                            }
-                        };
+                        let validation_dataset =
+                            match validation::dataset::ValidationDataset::from_graphs(
+                                data_graph.clone(),
+                                shapes_graph.clone(),
+                            ) {
+                                Ok(dataset) => dataset,
+                                Err(e) => {
+                                    println!(
+                                        "❌ FAIL: {} (failed to create validation dataset: {})",
+                                        test_name, e
+                                    );
+                                    failed += 1;
+                                    continue;
+                                }
+                            };
 
                         // Run validation
                         let report = validation::validate(&validation_dataset, &shapes);
