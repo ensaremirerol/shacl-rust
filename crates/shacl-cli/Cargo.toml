@@ -1,6 +1,6 @@
 [package]
 name = "shacl-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Ensar Emir EROL"]
 description = "Command-line interface for SHACL validation using shacl-rust"
@@ -13,7 +13,7 @@ name = "shacl-validator"
 path = "src/main.rs"
 
 [dependencies]
-shacl-rust = { version = "0.1.0", path = "../.." }
+shacl-rust = { version = "0.1.1", path = "../.." }
 
 clap = { version = "4.5", features = ["derive"] }
 log = "0.4"
