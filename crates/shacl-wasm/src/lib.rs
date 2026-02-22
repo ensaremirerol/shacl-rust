@@ -6,13 +6,6 @@ use shacl_rust::{
 
 use oxigraph::io::RdfFormat;
 
-#[wasm_bindgen(start)]
-pub fn init() {
-    // Set up better panic messages for debugging
-    #[cfg(feature = "console_error_panic_hook")]
-    console_error_panic_hook::set_once();
-}
-
 fn to_js_error(message: impl Into<String>) -> JsValue {
     JsValue::from_str(&message.into())
 }
