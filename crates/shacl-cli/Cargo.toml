@@ -2,19 +2,20 @@
 name = "shacl-cli"
 version = "0.1.0"
 edition = "2021"
-authors = [""]
-description = "CLI for shacl-rust"
+authors = ["Ensar Emir EROL"]
+description = "Command-line interface for SHACL validation using shacl-rust"
 license = "MIT"
+repository = "https://github.com/ensaremirerol/shacl-rust"
+keywords = ["shacl", "rdf", "validation", "cli"]
 
 [[bin]]
 name = "shacl-validator"
 path = "src/main.rs"
 
 [dependencies]
-shacl-rust = { path = "../.." }
+shacl-rust = { version = "0.1.0", path = "../.." }
 
 clap = { version = "4.5", features = ["derive"] }
-indicatif = "0.17"
 log = "0.4"
 env_logger = "0.11"
 rayon = "1.10"

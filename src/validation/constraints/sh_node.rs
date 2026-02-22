@@ -1,26 +1,29 @@
-use oxigraph::model::{Graph, TermRef};
+use oxigraph::model::TermRef;
 
 use crate::{
     core::{constraints::NodeConstraint, path::Path, shape::Shape},
     utils,
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for NodeConstraint<'a> {
     fn validate(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         _path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
 
         for &value_node in value_nodes {
             if let Some(value_as_node) = utils::term_to_named_or_blank(value_node) {
-                let nested_report = self.0.validate_node_report(data_graph, value_as_node);
+                let nested_report = self
+                    .0
+                    .validate_node_report(validation_dataset, value_as_node);
                 if !nested_report.conforms {
                     let is_focus = value_node == focus_node;
                     let builder = ViolationBuilder::new(focus_node)
@@ -54,6 +57,6 @@ impl<'a> Validate<'a> for NodeConstraint<'a> {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }

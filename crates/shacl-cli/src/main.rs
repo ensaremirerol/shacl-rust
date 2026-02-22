@@ -1,14 +1,11 @@
 use clap::{Parser, Subcommand};
-use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info};
 use rayon::prelude::*;
 use shacl_rust::{
-    core::shape::Shape,
+    core::{shape::Shape, ShapesInfo},
     err::{path_to_str, ShaclError},
-    parser, rdf,
-    validation::build_target_cache,
-    validation::dataset::{register_store_for_graph, ValidationDataset},
-    validation::{report::ValidationReport, report::ValidationResult},
+    parser, rdf, validate,
+    validation::dataset::ValidationDataset,
 };
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
@@ -268,90 +265,9 @@ fn info_command(
     info!("Graph loaded with {} triples", graph.len());
 
     let shapes = parser::parse_shapes(&graph)?;
-    println!(
-        "{}",
-        ShapesInfo {
-            shapes: &shapes,
-            graph_len: graph.len(),
-            detailed,
-        }
-    );
+    println!("{}", ShapesInfo::new(&shapes, graph.len(), detailed));
 
     Ok(())
-}
-
-struct ShapesInfo<'a> {
-    shapes: &'a [Shape<'a>],
-    graph_len: usize,
-    detailed: bool,
-}
-
-impl Display for ShapesInfo<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "\n{}", "=".repeat(80))?;
-        writeln!(f, "SHACL Shapes Information")?;
-        writeln!(f, "{}", "=".repeat(80))?;
-        writeln!(f, "Total shapes: {}", self.shapes.len())?;
-        writeln!(f, "Total triples in shapes graph: {}", self.graph_len)?;
-
-        let active_shapes = self.shapes.iter().filter(|s| !s.deactivated).count();
-        let deactivated_shapes = self.shapes.len() - active_shapes;
-
-        let total_targets: usize = self.shapes.iter().map(|s| s.targets.len()).sum();
-        let total_constraints: usize = self.shapes.iter().map(|s| s.constraints.len()).sum();
-
-        writeln!(f, "\nShape Status:")?;
-        writeln!(f, "  Active: {}", active_shapes)?;
-        writeln!(f, "  Deactivated: {}", deactivated_shapes)?;
-
-        writeln!(f, "\nConstraints:")?;
-        writeln!(f, "  Total targets: {}", total_targets)?;
-        writeln!(f, "  Total constraints: {}", total_constraints)?;
-
-        if self.detailed {
-            writeln!(f, "\n{}", "-".repeat(80))?;
-            writeln!(f, "Detailed Shape Information:")?;
-            writeln!(f, "{}", "-".repeat(80))?;
-
-            for (idx, shape) in self.shapes.iter().enumerate() {
-                writeln!(f, "\nShape #{}: {}", idx + 1, shape.node)?;
-                writeln!(
-                    f,
-                    "  Status: {}",
-                    if shape.deactivated {
-                        "DEACTIVATED"
-                    } else {
-                        "ACTIVE"
-                    }
-                )?;
-                writeln!(f, "  Severity: {}", shape.severity)?;
-                writeln!(f, "  Targets: {}", shape.targets.len())?;
-
-                for target in &shape.targets {
-                    writeln!(f, "    - {}", target)?;
-                }
-
-                writeln!(f, "  Constraints: {}", shape.constraints.len())?;
-
-                for constraint in &shape.constraints {
-                    writeln!(f, "    - {}", constraint)?;
-                }
-
-                if let Some(closed) = &shape.closed {
-                    writeln!(f, "  Closed: {}", closed)?;
-                }
-
-                if !shape.message.is_empty() {
-                    writeln!(f, "  Messages: {}", shape.message.len())?;
-                    for msg in &shape.message {
-                        writeln!(f, "    - {}", msg)?;
-                    }
-                }
-            }
-        }
-
-        writeln!(f, "\n{}", "=".repeat(80))
-    }
 }
 
 fn validate_command(
@@ -363,22 +279,10 @@ fn validate_command(
     output_format: &str,
     quiet: bool,
 ) -> Result<(), ShaclError> {
-    let progress_style =
-        ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
-            .map_err(|e| {
-                ShaclError::Parse(format!("Failed to configure progress bar style: {}", e))
-            })?
-            .progress_chars("##-");
-
-    let data_files_bar = if quiet {
-        None
-    } else {
-        let bar = ProgressBar::new(data_files.len() as u64);
-        bar.set_style(progress_style.clone());
-        bar.set_message("Loading data files");
-        Some(bar)
-    };
-
+    // If quiet is set, override log level to error
+    if quiet {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
+    }
     let data_graphs_results: Vec<Result<(PathBuf, oxigraph::model::Graph), ShaclError>> =
         data_files
             .into_par_iter()
@@ -389,16 +293,14 @@ fn validate_command(
                     data_format.as_deref().unwrap_or("auto")
                 );
                 let graph = read_graph_from_file(&data_file, data_format.as_deref())?;
-                if let Some(ref bar) = data_files_bar {
-                    bar.inc(1);
-                }
+                info!(
+                    "Data graph {} loaded with {} triples",
+                    data_file.display(),
+                    graph.len()
+                );
                 Ok((data_file, graph))
             })
             .collect();
-
-    if let Some(bar) = data_files_bar {
-        bar.finish_with_message("Loaded data files");
-    }
 
     let mut data_graph = oxigraph::model::Graph::new();
     for data_graph_result in data_graphs_results {
@@ -427,54 +329,23 @@ fn validate_command(
     let shapes_graph = read_graph_from_file(&shapes_file, shapes_format.as_deref())?;
     info!("Shapes graph loaded with {} triples", shapes_graph.len());
 
+    let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)?;
+
     // Parse shapes
-    let shapes = parser::parse_shapes(&shapes_graph)?;
+    let shapes = parser::parse_shapes(validation_dataset.shapes_graph())?;
     info!("Parsed {} shapes", shapes.len());
 
-    let validation_dataset = ValidationDataset::from_graphs(data_graph, &shapes_graph)?;
-    register_store_for_graph(validation_dataset.data_graph(), validation_dataset.store());
-
-    let validation_bar = if quiet {
-        None
-    } else {
-        let bar = ProgressBar::new(shapes.len() as u64);
-        bar.set_style(progress_style);
-        bar.set_message("Validating shapes");
-        Some(bar)
-    };
-
-    // Run validation for all shapes
-    let mut combined_report = ValidationReport::new();
-    let target_cache = build_target_cache(validation_dataset.data_graph(), &shapes);
-
-    for shape in &shapes {
-        let report =
-            shape.validate_with_target_cache(validation_dataset.data_graph(), &target_cache);
-
-        // Merge reports
-        if !report.conforms {
-            combined_report.conforms = false;
-        }
-        combined_report.results.extend(report.results);
-
-        if let Some(ref bar) = validation_bar {
-            bar.inc(1);
-        }
-    }
-
-    if let Some(bar) = validation_bar {
-        bar.finish_with_message("Validation completed");
-    }
+    let report = validate(&validation_dataset, &shapes);
 
     // Determine output format and generate report
     let output_text = match output_format {
         "text" => {
             // Human-readable text format
-            combined_report.to_string()
+            report.to_string()
         }
         "json" => {
             // JSON format
-            format_validation_report_json(&combined_report)?
+            report.as_json().to_string()
         }
         _ => {
             // Try to parse as RDF format (ttl, nt, nq, rdf, jsonld, trig)
@@ -487,7 +358,7 @@ fn validate_command(
             })?;
 
             // Convert validation report to RDF graph
-            let report_graph = combined_report.to_graph();
+            let report_graph = report.to_graph();
 
             // Serialize to string
             rdf::serialize_graph_to_string(&report_graph, rdf_format)?
@@ -506,7 +377,7 @@ fn validate_command(
     }
 
     // Exit with error code if validation failed
-    if !combined_report.conforms {
+    if !report.conforms {
         std::process::exit(1);
     }
 
@@ -533,37 +404,4 @@ fn read_graph_from_file(
         ))
     })?;
     rdf::read_graph_from_string(&content, effective_format)
-}
-
-fn format_validation_report_json(report: &ValidationReport) -> Result<String, ShaclError> {
-    use serde_json::json;
-
-    let results_json: Vec<_> = report
-        .results
-        .iter()
-        .map(validation_result_to_json)
-        .collect();
-
-    let output = json!({
-        "conforms": report.conforms,
-        "results": results_json,
-    });
-
-    serde_json::to_string_pretty(&output)
-        .map_err(|e| ShaclError::Parse(format!("Failed to serialize to JSON: {}", e)))
-}
-
-fn validation_result_to_json(result: &ValidationResult) -> serde_json::Value {
-    use serde_json::json;
-
-    json!({
-        "focusNode": result.focus_node.to_string(),
-        "sourceShape": result.source_shape.to_string(),
-        "sourceConstraintComponent": result.source_constraint_component.map(|c| c.to_string()),
-        "severity": result.severity.to_string(),
-        "resultPath": result.result_path.as_ref().map(|p| p.to_string()),
-        "value": result.value.map(|v| v.to_string()),
-        "messages": result.messages,
-        "details": result.details.iter().map(validation_result_to_json).collect::<Vec<_>>(),
-    })
 }

@@ -1,0 +1,32 @@
+[package]
+name = "shacl-mcp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ensar Emir EROL"]
+description = "MCP (Model Context Protocol) server for shacl-rust"
+license = "MIT"
+repository = "https://github.com/ensaremirerol/shacl-rust"
+keywords = ["shacl", "rdf", "mcp", "validation"]
+
+[[bin]]
+name = "shacl-mcp"
+path = "src/main.rs"
+
+[dependencies]
+shacl-rust = { version = "0.1.0", path = "../.." }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+oxigraph = { version = "0.5.5", default-features = true }
+tokio = { version = "1.0", features = ["full"] }
+rmcp = { version = "0.16.0", features = [
+    "server",
+    "transport-io",
+    "schemars",
+    "macros",
+] }
+tracing-subscriber = { version = "0.3.22", features = [
+    "env-filter",
+    "std",
+    "fmt",
+] }
+tracing = "0.1.44"

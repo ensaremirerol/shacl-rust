@@ -1,10 +1,8 @@
 import initWasm, {
   lint_data_graph,
   lint_shapes_graph,
-  validate_graphs_all_formats,
-  validate_graphs_conforms,
-  validate_graphs_json,
-  validate_graphs_output,
+  validate_graphs,
+  validate_graphs_conforms
 } from "./shacl_wasm.js";
 
 let initialized = false;
@@ -22,12 +20,7 @@ function ensureInit() {
   }
 }
 
-export function validateGraphsJson(dataGraph, shapesGraph, dataFormat, shapesFormat) {
-  ensureInit();
-  return validate_graphs_json(dataGraph, shapesGraph, dataFormat, shapesFormat);
-}
-
-export function validateGraphsOutput(
+export function validateGraphs(
   dataGraph,
   shapesGraph,
   dataFormat,
@@ -35,18 +28,7 @@ export function validateGraphsOutput(
   outputFormat
 ) {
   ensureInit();
-  return validate_graphs_output(dataGraph, shapesGraph, dataFormat, shapesFormat, outputFormat);
-}
-
-export function validateGraphsAllFormats(
-  dataGraph,
-  shapesGraph,
-  dataFormat,
-  shapesFormat,
-  graphFormat
-) {
-  ensureInit();
-  return validate_graphs_all_formats(dataGraph, shapesGraph, dataFormat, shapesFormat, graphFormat);
+  return validate_graphs(dataGraph, shapesGraph, dataFormat, shapesFormat, outputFormat);
 }
 
 export function validateGraphsConforms(dataGraph, shapesGraph, dataFormat, shapesFormat) {

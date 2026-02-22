@@ -1,20 +1,21 @@
-use oxigraph::model::{Graph, TermRef};
+use oxigraph::model::TermRef;
 
 use crate::{
     core::{constraints::MinCountConstraint, path::Path, shape::Shape},
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for MinCountConstraint {
     fn validate(
         &'a self,
-        _data_graph: &'a Graph,
+        _validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         _path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let count = value_nodes.len() as i32;
         if count < self.0 {
             let builder = ViolationBuilder::new(focus_node)
@@ -23,9 +24,9 @@ impl<'a> Validate<'a> for MinCountConstraint {
                 .detail(format!("sh:minCount {}", self.0));
 
             let result = shape.build_validation_result(builder);
-            vec![result]
+            Ok(vec![result])
         } else {
-            Vec::new()
+            Ok(Vec::new())
         }
     }
 }

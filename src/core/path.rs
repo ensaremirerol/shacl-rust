@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Display};
 
+use log::debug;
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,19 +85,20 @@ impl<'a> Path<'a> {
         self.source
     }
 
+    /// Resolves the path for a given node in the graph, returning all reachable nodes.
     pub fn resolve_path_for_given_node(
         &self,
         graph: &'a oxigraph::model::Graph,
         node: &oxigraph::model::NamedOrBlankNodeRef<'a>,
     ) -> Vec<oxigraph::model::TermRef<'a>> {
-        // Start with the given node as the initial set
+        debug!("Resolving path for node {:?} with path: {}", node, self);
         let mut current_nodes: Vec<TermRef<'a>> = vec![(*node).into()];
 
         // Apply each path element in sequence
         for element in &self.path {
             current_nodes = self.resolve_element(graph, element, &current_nodes);
         }
-
+        debug!("Resolved nodes: {:?}", current_nodes);
         current_nodes
     }
 

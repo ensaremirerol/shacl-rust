@@ -14,11 +14,15 @@ fn parse_executable<'a>(
     graph: &'a Graph,
     executable_node: NamedOrBlankNodeRef<'a>,
 ) -> Option<SparqlExecutable> {
-    if let Some(TermRef::Literal(lit)) = graph.object_for_subject_predicate(executable_node, sh::SELECT) {
+    if let Some(TermRef::Literal(lit)) =
+        graph.object_for_subject_predicate(executable_node, sh::SELECT)
+    {
         return Some(SparqlExecutable::Select(lit.value().to_string()));
     }
 
-    if let Some(TermRef::Literal(lit)) = graph.object_for_subject_predicate(executable_node, sh::ASK) {
+    if let Some(TermRef::Literal(lit)) =
+        graph.object_for_subject_predicate(executable_node, sh::ASK)
+    {
         return Some(SparqlExecutable::Ask(lit.value().to_string()));
     }
 

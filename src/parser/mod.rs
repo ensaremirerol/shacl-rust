@@ -4,6 +4,7 @@ pub mod constraints;
 pub mod path;
 pub mod target;
 
+use log::debug;
 use oxigraph::model::{
     vocab::{rdf, rdfs},
     Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef,
@@ -24,11 +25,13 @@ use self::{path::parse_path, target::parse_targets};
 
 /// Parses all SHACL shapes from a graph.
 pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
+    debug!("Starting shape parsing");
+    let time = std::time::Instant::now();
     let mut shapes = Vec::new();
     let mut visited = HashSet::new();
 
     let shape_nodes = find_shape_nodes(graph);
-    log::debug!("Found {} shape nodes", shape_nodes.len());
+    debug!("Found {} shape nodes", shape_nodes.len());
 
     for shape_node in shape_nodes {
         if visited.contains(&shape_node) {
@@ -36,10 +39,10 @@ pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
         }
         visited.insert(shape_node);
 
-        log::debug!("Parsing shape: {}", shape_node);
+        debug!("Parsing shape: {}", shape_node);
         match parse_shape(graph, shape_node, None) {
             Ok(shape) => {
-                log::debug!("Successfully parsed shape: {}", shape_node);
+                debug!("Successfully parsed shape: {}", shape_node);
                 shapes.push(shape);
             }
             Err(e) => {
@@ -48,7 +51,8 @@ pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
         }
     }
 
-    log::debug!("Total shapes parsed: {}", shapes.len());
+    debug!("Finished shape parsing at {}", time.elapsed().as_secs_f64());
+    debug!("Total shapes parsed: {}", shapes.len());
     Ok(shapes)
 }
 

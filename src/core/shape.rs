@@ -1,4 +1,7 @@
-use std::{collections::HashSet, fmt::Display};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+};
 
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef};
 
@@ -60,6 +63,22 @@ pub struct Shape<'a> {
     pub property_shapes: Vec<Shape<'a>>,
 
     pub parent: Option<NamedOrBlankNodeRef<'a>>,
+}
+
+pub struct ShapesInfo<'a> {
+    shapes: &'a [Shape<'a>],
+    graph_len: usize,
+    detailed: bool,
+}
+
+impl<'a> ShapesInfo<'a> {
+    pub fn new(shapes: &'a [Shape<'a>], graph_len: usize, detailed: bool) -> Self {
+        ShapesInfo {
+            shapes,
+            graph_len,
+            detailed,
+        }
+    }
 }
 
 impl<'a> Shape<'a> {
@@ -286,5 +305,73 @@ impl<'a> Display for ClosedConstraint<'a> {
             write!(f, ")")?;
         }
         Ok(())
+    }
+}
+
+impl Display for ShapesInfo<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "\n{}", "=".repeat(80))?;
+        writeln!(f, "SHACL Shapes Information")?;
+        writeln!(f, "{}", "=".repeat(80))?;
+        writeln!(f, "Total shapes: {}", self.shapes.len())?;
+        writeln!(f, "Total triples in shapes graph: {}", self.graph_len)?;
+
+        let active_shapes = self.shapes.iter().filter(|s| !s.deactivated).count();
+        let deactivated_shapes = self.shapes.len() - active_shapes;
+
+        let total_targets: usize = self.shapes.iter().map(|s| s.targets.len()).sum();
+        let total_constraints: usize = self.shapes.iter().map(|s| s.constraints.len()).sum();
+
+        writeln!(f, "\nShape Status:")?;
+        writeln!(f, "  Active: {}", active_shapes)?;
+        writeln!(f, "  Deactivated: {}", deactivated_shapes)?;
+
+        writeln!(f, "\nConstraints:")?;
+        writeln!(f, "  Total targets: {}", total_targets)?;
+        writeln!(f, "  Total constraints: {}", total_constraints)?;
+
+        if self.detailed {
+            writeln!(f, "\n{}", "-".repeat(80))?;
+            writeln!(f, "Detailed Shape Information:")?;
+            writeln!(f, "{}", "-".repeat(80))?;
+
+            for (idx, shape) in self.shapes.iter().enumerate() {
+                writeln!(f, "\nShape #{}: {}", idx + 1, shape.node)?;
+                writeln!(
+                    f,
+                    "  Status: {}",
+                    if shape.deactivated {
+                        "DEACTIVATED"
+                    } else {
+                        "ACTIVE"
+                    }
+                )?;
+                writeln!(f, "  Severity: {}", shape.severity)?;
+                writeln!(f, "  Targets: {}", shape.targets.len())?;
+
+                for target in &shape.targets {
+                    writeln!(f, "    - {}", target)?;
+                }
+
+                writeln!(f, "  Constraints: {}", shape.constraints.len())?;
+
+                for constraint in &shape.constraints {
+                    writeln!(f, "    - {}", constraint)?;
+                }
+
+                if let Some(closed) = &shape.closed {
+                    writeln!(f, "  Closed: {}", closed)?;
+                }
+
+                if !shape.message.is_empty() {
+                    writeln!(f, "  Messages: {}", shape.message.len())?;
+                    for msg in &shape.message {
+                        writeln!(f, "    - {}", msg)?;
+                    }
+                }
+            }
+        }
+
+        writeln!(f, "\n{}", "=".repeat(80))
     }
 }

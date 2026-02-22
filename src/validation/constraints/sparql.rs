@@ -1,10 +1,8 @@
 use oxigraph::{
-    model::{GraphNameRef, NamedNodeRef, NamedOrBlankNodeRef, QuadRef, TermRef},
+    model::{NamedOrBlankNodeRef, TermRef},
     sparql::{QueryResults, SparqlEvaluator},
-    store::Store,
 };
 use spargebra::{algebra::GraphPattern, Query, SparqlParser};
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use crate::{
     core::{
@@ -13,63 +11,13 @@ use crate::{
         shape::Shape,
     },
     utils,
-    validation::dataset,
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{
+        dataset::{self, ValidationDataset},
+        Validate, ValidationResult, ViolationBuilder,
+    },
     vocab::sh,
+    ShaclError,
 };
-
-thread_local! {
-    static SPARQL_STORE_CACHE: RefCell<HashMap<(usize, usize), Arc<Store>>> = RefCell::new(HashMap::new());
-}
-
-fn graph_cache_key(data_graph: &oxigraph::model::Graph) -> (usize, usize) {
-    (data_graph as *const _ as usize, data_graph.len())
-}
-
-fn get_or_create_store(data_graph: &oxigraph::model::Graph) -> Result<Arc<Store>, String> {
-    if let Some(store) = dataset::get_store_for_graph(data_graph) {
-        return Ok(store);
-    }
-
-    let cache_key = graph_cache_key(data_graph);
-
-    SPARQL_STORE_CACHE.with(|cache| {
-        if let Some(store) = cache.borrow().get(&cache_key) {
-            return Ok(Arc::clone(store));
-        }
-
-        let store = Arc::new(to_store(data_graph)?);
-        cache.borrow_mut().insert(cache_key, Arc::clone(&store));
-        Ok(store)
-    })
-}
-
-fn to_store(data_graph: &oxigraph::model::Graph) -> Result<Store, String> {
-    let store = Store::new().map_err(|e| format!("Failed to create SPARQL store: {}", e))?;
-    let shapes_graph = NamedNodeRef::new_unchecked(dataset::SHAPES_GRAPH_IRI);
-
-    for triple in data_graph.iter() {
-        store
-            .insert(QuadRef::new(
-                triple.subject,
-                triple.predicate,
-                triple.object,
-                GraphNameRef::DefaultGraph,
-            ))
-            .map_err(|e| format!("Failed to load data graph into SPARQL store: {}", e))?;
-
-        store
-            .insert(QuadRef::new(
-                triple.subject,
-                triple.predicate,
-                triple.object,
-                GraphNameRef::NamedNode(shapes_graph),
-            ))
-            .map_err(|e| format!("Failed to load named graph into SPARQL store: {}", e))?;
-    }
-
-    Ok(store)
-}
 
 fn constraint_component<'a>(c: &'a SparqlConstraint<'a>) -> oxigraph::model::NamedNodeRef<'a> {
     if let Some(NamedOrBlankNodeRef::NamedNode(component)) = c.source_constraint_component {
@@ -185,25 +133,15 @@ fn render_messages_for_solution(
 impl<'a> Validate<'a> for SparqlConstraint<'a> {
     fn validate(
         &'a self,
-        data_graph: &'a oxigraph::model::Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
 
-        let store = match get_or_create_store(data_graph) {
-            Ok(store) => store,
-            Err(error) => {
-                let builder = ViolationBuilder::new(focus_node)
-                    .message(error)
-                    .component(constraint_component(self))
-                    .detail("SPARQL setup error");
-                violations.push(shape.build_validation_result(builder));
-                return violations;
-            }
-        };
+        let store = validation_dataset.store();
 
         let mut evaluator = SparqlEvaluator::new();
         for (prefix, namespace) in &self.prefixes {
@@ -248,7 +186,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
             }
 
             violations.push(shape.build_validation_result(builder));
-            return violations;
+            return Ok(violations);
         }
 
         for maybe_value in run_once_targets {
@@ -455,6 +393,6 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }

@@ -1,29 +1,33 @@
-use oxigraph::model::{Graph, TermRef};
+use oxigraph::model::TermRef;
 use std::collections::HashSet;
 
 use crate::{
     core::{constraints::LessThanOrEqualsConstraint, path::Path, shape::Shape},
     utils,
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for LessThanOrEqualsConstraint<'a> {
     fn validate(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let Some(focus_as_node) = utils::term_to_named_or_blank(focus_node) else {
-            return vec![];
+            return Ok(Vec::new());
         };
 
         let mut violations = Vec::new();
 
-        let other_values: HashSet<TermRef<'a>> = self.0
+        let data_graph = validation_dataset.data_graph();
+
+        let other_values: HashSet<TermRef<'a>> = self
+            .0
             .resolve_path_for_given_node(data_graph, &focus_as_node)
             .into_iter()
             .collect();
@@ -56,6 +60,6 @@ impl<'a> Validate<'a> for LessThanOrEqualsConstraint<'a> {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }

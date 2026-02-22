@@ -58,7 +58,7 @@ const FILE_EXTENSION_TO_FORMAT = {
 
 let wasmReady = false;
 let wasmInit = null;
-let validateGraphsOutput = null;
+let validateGraphs = null;
 let lintDataGraph = null;
 let lintShapesGraph = null;
 let dataEditor = null;
@@ -223,7 +223,7 @@ function getShapesGraphText() {
 }
 
 function validateNow() {
-  if (!wasmReady || !validateGraphsOutput) {
+  if (!wasmReady || !validateGraphs) {
     setStatus("WASM is not ready yet.", "err");
     return;
   }
@@ -232,7 +232,7 @@ function validateNow() {
   setStatus("Validating...", "ok");
 
   try {
-    const result = validateGraphsOutput(
+    const result = validateGraphs(
       getDataGraphText(),
       getShapesGraphText(),
       dataFormatEl.value,
@@ -263,7 +263,7 @@ async function loadWasmModule() {
   const moduleUrl = new URL("./pkg/shacl_wasm.js", import.meta.url).href;
   const wasmModule = await import(moduleUrl);
   wasmInit = wasmModule.default;
-  validateGraphsOutput = wasmModule.validate_graphs_output;
+  validateGraphs = wasmModule.validate_graphs;
   lintDataGraph = wasmModule.lint_data_graph;
   lintShapesGraph = wasmModule.lint_shapes_graph;
 }

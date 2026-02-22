@@ -15,7 +15,5 @@ pub use core::{
 };
 pub use err::ShaclError;
 pub use parser::parse_shapes;
-pub use validation::{
-    report::ValidationReport, report::ValidationResult, validate, validate_with_dataset,
-};
+pub use validation::{report::ValidationReport, report::ValidationResult, validate};
 pub use vocab::sh;

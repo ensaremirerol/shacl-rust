@@ -1,21 +1,22 @@
-use oxigraph::model::{Graph, TermRef};
+use oxigraph::model::TermRef;
 
 use crate::{
     core::{constraints::MaxExclusiveConstraint, path::Path, shape::Shape},
     utils,
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for MaxExclusiveConstraint<'a> {
     fn validate(
         &'a self,
-        _data_graph: &'a Graph,
+        _validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         _path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
 
         for &value_node in value_nodes {
@@ -30,6 +31,6 @@ impl<'a> Validate<'a> for MaxExclusiveConstraint<'a> {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }

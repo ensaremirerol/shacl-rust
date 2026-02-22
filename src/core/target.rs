@@ -1,3 +1,4 @@
+use log::debug;
 use oxigraph::model::vocab::rdf::TYPE;
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use std::collections::HashSet;
@@ -48,6 +49,11 @@ impl<'a> Target<'a> {
         &self,
         graph: &'a oxigraph::model::Graph,
     ) -> HashSet<oxigraph::model::TermRef<'a>> {
+        debug!(
+            "Resolving target: {} for graph with {} triples",
+            self,
+            graph.len()
+        );
         match self {
             Target::Node(term) => {
                 let mut set = HashSet::new();

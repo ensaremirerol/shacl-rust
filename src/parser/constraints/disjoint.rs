@@ -1,5 +1,5 @@
-use oxigraph::model::{Graph, NamedOrBlankNodeRef};
 use log::warn;
+use oxigraph::model::{Graph, NamedOrBlankNodeRef};
 
 use crate::{
     core::constraints::DisjointConstraint, parser::constraint_parser_trait::ConstraintParserTrait,

@@ -290,7 +290,11 @@ impl<'a> Display for SparqlConstraint<'a> {
             }
         }
 
-        write!(f, " query: \"{}\"", self.executable.query().replace('\n', " "))?;
+        write!(
+            f,
+            " query: \"{}\"",
+            self.executable.query().replace('\n', " ")
+        )?;
 
         Ok(())
     }

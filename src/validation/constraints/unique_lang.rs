@@ -1,21 +1,22 @@
-use oxigraph::model::{Graph, TermRef};
+use oxigraph::model::TermRef;
 use std::collections::HashMap;
 
 use crate::{
     core::{constraints::UniqueLangConstraint, path::Path, shape::Shape},
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for UniqueLangConstraint {
     fn validate(
         &'a self,
-        _data_graph: &'a Graph,
+        _validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         _path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
         let mut seen_languages = HashMap::new();
 
@@ -40,6 +41,6 @@ impl<'a> Validate<'a> for UniqueLangConstraint {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }

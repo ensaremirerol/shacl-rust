@@ -1,0 +1,121 @@
+{
+    "packages": {
+        ".": {
+            "release-type": "rust",
+            "package-name": "shacl-rust",
+            "bump-minor-pre-major": true,
+            "bump-patch-for-minor-pre-major": true,
+            "changelog-sections": [
+                {
+                    "type": "feat",
+                    "section": "Features"
+                },
+                {
+                    "type": "fix",
+                    "section": "Bug Fixes"
+                },
+                {
+                    "type": "perf",
+                    "section": "Performance Improvements"
+                },
+                {
+                    "type": "docs",
+                    "section": "Documentation"
+                },
+                {
+                    "type": "chore",
+                    "section": "Miscellaneous",
+                    "hidden": false
+                }
+            ]
+        },
+        "crates/shacl-cli": {
+            "release-type": "rust",
+            "package-name": "shacl-cli",
+            "bump-minor-pre-major": true,
+            "bump-patch-for-minor-pre-major": true,
+            "changelog-sections": [
+                {
+                    "type": "feat",
+                    "section": "Features"
+                },
+                {
+                    "type": "fix",
+                    "section": "Bug Fixes"
+                },
+                {
+                    "type": "perf",
+                    "section": "Performance Improvements"
+                },
+                {
+                    "type": "docs",
+                    "section": "Documentation"
+                },
+                {
+                    "type": "chore",
+                    "section": "Miscellaneous",
+                    "hidden": false
+                }
+            ]
+        },
+        "crates/shacl-mcp": {
+            "release-type": "rust",
+            "package-name": "shacl-mcp",
+            "bump-minor-pre-major": true,
+            "bump-patch-for-minor-pre-major": true,
+            "changelog-sections": [
+                {
+                    "type": "feat",
+                    "section": "Features"
+                },
+                {
+                    "type": "fix",
+                    "section": "Bug Fixes"
+                },
+                {
+                    "type": "perf",
+                    "section": "Performance Improvements"
+                },
+                {
+                    "type": "docs",
+                    "section": "Documentation"
+                },
+                {
+                    "type": "chore",
+                    "section": "Miscellaneous",
+                    "hidden": false
+                }
+            ]
+        },
+        "crates/shacl-wasm": {
+            "release-type": "rust",
+            "package-name": "shacl-wasm",
+            "bump-minor-pre-major": true,
+            "bump-patch-for-minor-pre-major": true,
+            "changelog-sections": [
+                {
+                    "type": "feat",
+                    "section": "Features"
+                },
+                {
+                    "type": "fix",
+                    "section": "Bug Fixes"
+                },
+                {
+                    "type": "perf",
+                    "section": "Performance Improvements"
+                },
+                {
+                    "type": "docs",
+                    "section": "Documentation"
+                },
+                {
+                    "type": "chore",
+                    "section": "Miscellaneous",
+                    "hidden": false
+                }
+            ]
+        }
+    },
+    "bootstrap-sha": "c49fb28b8fff24a2cd07cb85876d04a3f15d7be9"
+}

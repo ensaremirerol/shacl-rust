@@ -2,14 +2,14 @@
 name = "shacl-rust"
 version = "0.1.0"
 edition = "2021"
-authors = [""]
+authors = ["Ensar Emir EROL"]
 description = "A SHACL (Shapes Constraint Language) validator for RDF graphs"
 license = "MIT"
 repository = "https://github.com/ensaremirerol/shacl-rust"
 keywords = ["shacl", "rdf", "validation", "semantic-web"]
 
 [workspace]
-members = ["crates/shacl-cli", "crates/shacl-wasm"]
+members = ["crates/shacl-cli", "crates/shacl-wasm", "crates/shacl-mcp"]
 
 [lib]
 name = "shacl_rust"
@@ -28,10 +28,11 @@ regex = "1.10"
 
 # SPARQL parser/algebra inspection
 spargebra = "0.4.5"
+serde_json = "1.0.149"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # RDF handling
-oxigraph = "0.5.5"
+oxigraph = { version = "0.5.5", default-features = false, features = [] }
 
 # Parallel processing
 rayon = "1.10"

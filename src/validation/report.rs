@@ -190,6 +190,41 @@ impl<'a> ValidationReport<'a> {
 
         result_subject
     }
+
+    pub fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "conforms": self.conforms,
+            "results": self.results.iter().map(|r| r.as_json()).collect::<Vec<_>>(),
+        })
+    }
+}
+
+impl ValidationResult<'_> {
+    pub fn as_json(&self) -> serde_json::Value {
+        let mut result_obj = serde_json::json!({
+            "focusNode": self.focus_node.to_string(),
+            "sourceShape": self.source_shape.to_string(),
+            "severity": self.severity.to_string(),
+        });
+
+        if let Some(ref path) = self.result_path {
+            result_obj["resultPath"] = serde_json::json!(path.to_string());
+        }
+        if let Some(value) = self.value {
+            result_obj["value"] = serde_json::json!(value.to_string());
+        }
+        if !self.messages.is_empty() {
+            result_obj["messages"] = serde_json::json!(self.messages);
+        }
+        if !self.trace.is_empty() {
+            result_obj["trace"] = serde_json::json!(self.trace);
+        }
+        if !self.details.is_empty() {
+            result_obj["details"] =
+                serde_json::json!(self.details.iter().map(|d| d.as_json()).collect::<Vec<_>>());
+        }
+        result_obj
+    }
 }
 
 impl<'a> Default for ValidationReport<'a> {

@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    ops::Deref,
-    sync::{Arc, OnceLock, RwLock},
-};
+use std::{ops::Deref, sync::Arc};
 
 use oxigraph::{
     model::{Graph, GraphNameRef, NamedNodeRef, QuadRef},
@@ -13,39 +9,15 @@ use crate::err::ShaclError;
 
 pub const SHAPES_GRAPH_IRI: &str = "urn:shacl:shapes-graph";
 
-type SharedStoresMap = HashMap<(usize, usize), Arc<Store>>;
-
-static SHARED_STORES: OnceLock<RwLock<SharedStoresMap>> = OnceLock::new();
-
-fn shared_stores() -> &'static RwLock<HashMap<(usize, usize), Arc<Store>>> {
-    SHARED_STORES.get_or_init(|| RwLock::new(HashMap::new()))
-}
-
-fn graph_store_key(graph: &Graph) -> (usize, usize) {
-    (graph as *const _ as usize, graph.len())
-}
-
-pub fn register_store_for_graph(graph: &Graph, store: Arc<Store>) {
-    if let Ok(mut stores) = shared_stores().write() {
-        stores.insert(graph_store_key(graph), store);
-    }
-}
-
-pub fn get_store_for_graph(graph: &Graph) -> Option<Arc<Store>> {
-    shared_stores()
-        .read()
-        .ok()
-        .and_then(|stores| stores.get(&graph_store_key(graph)).cloned())
-}
-
 #[derive(Clone)]
 pub struct ValidationDataset {
     store: Arc<Store>,
     data_graph: Graph,
+    shapes_graph: Graph,
 }
 
 impl ValidationDataset {
-    pub fn from_graphs(data_graph: Graph, shapes_graph: &Graph) -> Result<Self, ShaclError> {
+    pub fn from_graphs(data_graph: Graph, shapes_graph: Graph) -> Result<Self, ShaclError> {
         let store = Store::new()
             .map_err(|e| ShaclError::Io(format!("Failed to create validation store: {}", e)))?;
 
@@ -85,6 +57,7 @@ impl ValidationDataset {
         Ok(Self {
             store: Arc::new(store),
             data_graph,
+            shapes_graph,
         })
     }
 
@@ -94,6 +67,10 @@ impl ValidationDataset {
 
     pub fn data_graph(&self) -> &Graph {
         &self.data_graph
+    }
+
+    pub fn shapes_graph(&self) -> &Graph {
+        &self.shapes_graph
     }
 }
 

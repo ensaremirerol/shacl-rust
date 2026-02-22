@@ -1,4 +1,3 @@
-pub mod constraint_validator_trait;
 pub mod constraints;
 pub mod dataset;
 pub mod report;
@@ -12,9 +11,12 @@ use rayon::prelude::*;
 use crate::{
     core::{constraints::Constraint, path::Path, shape::Shape, target::Target},
     utils,
-    validation::dataset::ValidationDataset,
-    validation::report::{ValidationReport, ValidationResult},
+    validation::{
+        dataset::ValidationDataset,
+        report::{ValidationReport, ValidationResult},
+    },
     vocab::sh,
+    ShaclError,
 };
 
 pub type TargetResolutionCache<'a> = HashMap<Target<'a>, HashSet<TermRef<'a>>>;
@@ -41,12 +43,12 @@ pub trait Validate<'a> {
     /// Validates the constraint for the given focus/value context.
     fn validate(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>>;
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError>;
 }
 
 /// Context for validating one focus/value traversal.
@@ -129,20 +131,22 @@ impl<'a> ViolationBuilder<'a> {
 }
 
 /// Validates a graph against all provided shapes.
-pub fn validate<'a>(data_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> ValidationReport<'a> {
+pub fn validate<'a>(
+    validation_dataset: &'a ValidationDataset,
+    shapes: &'a [Shape<'a>],
+) -> ValidationReport<'a> {
     let mut report = ValidationReport::new();
-    let target_cache = build_target_cache(data_graph, shapes);
-
+    let target_cache = build_target_cache(validation_dataset.data_graph(), shapes);
     #[cfg(not(target_family = "wasm"))]
     let shape_reports: Vec<ValidationReport<'a>> = shapes
         .par_iter()
-        .map(|shape| shape.validate_with_target_cache(data_graph, &target_cache))
+        .map(|shape| shape.validate_with_target_cache(validation_dataset, &target_cache))
         .collect();
 
     #[cfg(target_family = "wasm")]
     let shape_reports: Vec<ValidationReport<'a>> = shapes
         .iter()
-        .map(|shape| shape.validate_with_target_cache(data_graph, &target_cache))
+        .map(|shape| shape.validate_with_target_cache(validation_dataset, &target_cache))
         .collect();
 
     for shape_report in shape_reports {
@@ -152,23 +156,15 @@ pub fn validate<'a>(data_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> Validatio
     report
 }
 
-/// Validates a dataset against all provided shapes using the dataset data graph view.
-pub fn validate_with_dataset<'a>(
-    dataset: &'a ValidationDataset,
-    shapes: &'a [Shape<'a>],
-) -> ValidationReport<'a> {
-    validate(dataset.data_graph(), shapes)
-}
-
 impl<'a> Shape<'a> {
     /// Validates a data graph against this shape.
-    pub fn validate(&'a self, data_graph: &'a Graph) -> ValidationReport<'a> {
-        self.validate_with_target_cache(data_graph, &TargetResolutionCache::new())
+    pub fn validate(&'a self, validation_dataset: &'a ValidationDataset) -> ValidationReport<'a> {
+        self.validate_with_target_cache(validation_dataset, &TargetResolutionCache::new())
     }
 
     pub fn validate_with_target_cache(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         target_cache: &TargetResolutionCache<'a>,
     ) -> ValidationReport<'a> {
         let mut report = ValidationReport {
@@ -185,7 +181,8 @@ impl<'a> Shape<'a> {
             if let Some(cached_nodes) = target_cache.get(&target) {
                 focus_nodes.extend(cached_nodes.iter().copied());
             } else {
-                focus_nodes.extend(target.resolve_target_for_given_graph(data_graph));
+                focus_nodes
+                    .extend(target.resolve_target_for_given_graph(validation_dataset.data_graph()));
             }
         }
 
@@ -196,7 +193,7 @@ impl<'a> Shape<'a> {
             .par_iter()
             .map(|&focus_node| {
                 let mut node_report = ValidationReport::new();
-                self.validate_focus_node(data_graph, focus_node, &mut node_report);
+                self.validate_focus_node(validation_dataset, focus_node, &mut node_report);
                 node_report
             })
             .collect();
@@ -206,7 +203,11 @@ impl<'a> Shape<'a> {
             .iter()
             .map(|&focus_node| {
                 let mut node_report = ValidationReport::new();
-                self.validate_focus_node(data_graph, focus_node, &mut node_report);
+                self.validate_focus_node(
+                    validation_dataset.data_graph(),
+                    focus_node,
+                    &mut node_report,
+                );
                 node_report
             })
             .collect();
@@ -219,13 +220,17 @@ impl<'a> Shape<'a> {
     }
 
     /// Validates one node against this shape, without target resolution.
-    fn validate_node(&'a self, data_graph: &'a Graph, node: NamedOrBlankNodeRef<'a>) -> bool {
-        self.validate_node_report(data_graph, node).conforms
+    fn validate_node(
+        &'a self,
+        validation_dataset: &'a ValidationDataset,
+        node: NamedOrBlankNodeRef<'a>,
+    ) -> bool {
+        self.validate_node_report(validation_dataset, node).conforms
     }
 
     fn validate_node_report(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         node: NamedOrBlankNodeRef<'a>,
     ) -> ValidationReport<'a> {
         let mut report = ValidationReport {
@@ -237,7 +242,7 @@ impl<'a> Shape<'a> {
             return report;
         }
 
-        self.validate_focus_node(data_graph, node.into(), &mut report);
+        self.validate_focus_node(validation_dataset, node.into(), &mut report);
 
         report
     }
@@ -245,14 +250,14 @@ impl<'a> Shape<'a> {
     /// Validates a focus node against this shape.
     fn validate_focus_node(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         report: &mut ValidationReport<'a>,
     ) {
-        let value_nodes = self.get_value_nodes(data_graph, focus_node);
-        self.validate_constraints_on_values(data_graph, focus_node, &value_nodes, report);
-        self.validate_nested_property_shapes(data_graph, focus_node, &value_nodes, report);
-        self.validate_closed_constraint(data_graph, focus_node, report);
+        let value_nodes = self.get_value_nodes(validation_dataset, focus_node);
+        self.validate_constraints_on_values(validation_dataset, focus_node, &value_nodes, report);
+        self.validate_nested_property_shapes(validation_dataset, focus_node, &value_nodes, report);
+        self.validate_closed_constraint(validation_dataset, focus_node, report);
     }
 
     /// Resolves value nodes for the current shape.
@@ -275,20 +280,26 @@ impl<'a> Shape<'a> {
     /// Validates all constraints on the given value nodes
     fn validate_constraints_on_values(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         value_nodes: &[TermRef<'a>],
         report: &mut ValidationReport<'a>,
     ) {
         for constraint in &self.constraints {
-            self.validate_constraint(data_graph, focus_node, value_nodes, constraint, report);
+            self.validate_constraint(
+                validation_dataset,
+                focus_node,
+                value_nodes,
+                constraint,
+                report,
+            );
         }
     }
 
     /// Validates nested property shapes on value nodes
     fn validate_nested_property_shapes(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         _focus_node: TermRef<'a>,
         value_nodes: &[TermRef<'a>],
         report: &mut ValidationReport<'a>,
@@ -331,14 +342,14 @@ impl<'a> Shape<'a> {
             for (ps_idx, property_shape) in self.property_shapes.iter().enumerate() {
                 if let Some(siblings) = sibling_qualified_shapes.get(&ps_idx) {
                     self.validate_property_shape_with_disjoint(
-                        data_graph,
+                        validation_dataset,
                         property_shape,
                         *value_node,
                         siblings,
                         report,
                     );
                 } else {
-                    property_shape.validate_focus_node(data_graph, *value_node, report);
+                    property_shape.validate_focus_node(validation_dataset, *value_node, report);
                 }
             }
         }
@@ -347,13 +358,13 @@ impl<'a> Shape<'a> {
     /// Validates a property shape with disjoint qualified value constraints.
     fn validate_property_shape_with_disjoint(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         property_shape: &'a Shape<'a>,
         focus_node: TermRef<'a>,
         sibling_qualified_shapes: &[&'a Shape<'a>],
         report: &mut ValidationReport<'a>,
     ) {
-        let value_nodes = property_shape.get_value_nodes(data_graph, focus_node);
+        let value_nodes = property_shape.get_value_nodes(validation_dataset, focus_node);
         let mut qualified_conforming_count = 0;
 
         for constraint in &property_shape.constraints {
@@ -361,10 +372,12 @@ impl<'a> Shape<'a> {
                 if qvs.qualified_value_shapes_disjoint {
                     for &value_node in &value_nodes {
                         if let Some(value_as_node) = utils::term_to_named_or_blank(value_node) {
-                            if qvs.shape.validate_node(data_graph, value_as_node) {
+                            if qvs.shape.validate_node(validation_dataset, value_as_node) {
                                 let mut conforms_to_sibling = false;
                                 for sibling_shape in sibling_qualified_shapes {
-                                    if sibling_shape.validate_node(data_graph, value_as_node) {
+                                    if sibling_shape
+                                        .validate_node(validation_dataset, value_as_node)
+                                    {
                                         conforms_to_sibling = true;
                                         break;
                                     }
@@ -414,7 +427,7 @@ impl<'a> Shape<'a> {
             }
 
             property_shape.validate_constraint(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 &value_nodes,
                 constraint,
@@ -423,18 +436,18 @@ impl<'a> Shape<'a> {
         }
 
         property_shape.validate_nested_property_shapes(
-            data_graph,
+            validation_dataset,
             focus_node,
             &value_nodes,
             report,
         );
-        property_shape.validate_closed_constraint(data_graph, focus_node, report);
+        property_shape.validate_closed_constraint(validation_dataset, focus_node, report);
     }
 
     /// Validates `sh:closed`.
     fn validate_closed_constraint(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         report: &mut ValidationReport<'a>,
     ) {
@@ -460,6 +473,7 @@ impl<'a> Shape<'a> {
             }
         }
 
+        let data_graph = validation_dataset.data_graph();
         for triple in data_graph.triples_for_subject(focus_as_node) {
             if !allowed_properties.contains(&triple.predicate) {
                 self.add_violation_with_component(
@@ -479,7 +493,7 @@ impl<'a> Shape<'a> {
     /// Validates one constraint for the given values.
     fn validate_constraint(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         value_nodes: &[TermRef<'a>],
         constraint: &'a Constraint<'a>,
@@ -487,189 +501,189 @@ impl<'a> Shape<'a> {
     ) {
         let violations = match constraint {
             Constraint::Class(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Datatype(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::NodeKind(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MinCount(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MaxCount(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MinExclusive(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MinInclusive(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MaxExclusive(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MaxInclusive(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MinLength(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::MaxLength(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Pattern(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::LanguageIn(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::UniqueLang(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Equals(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Disjoint(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::LessThan(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::LessThanOrEquals(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::HasValue(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::In(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Node(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::QualifiedValueShape(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::And(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Or(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Xone(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Not(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
                 self,
             ),
             Constraint::Sparql(c) => c.validate(
-                data_graph,
+                validation_dataset,
                 focus_node,
                 self.path.as_ref(),
                 value_nodes,
@@ -677,9 +691,11 @@ impl<'a> Shape<'a> {
             ),
         };
 
-        for violation in violations {
-            report.conforms = false;
-            report.results.push(violation);
+        if let Ok(violations) = violations {
+            for violation in violations {
+                report.conforms = false;
+                report.results.push(violation);
+            }
         }
     }
 

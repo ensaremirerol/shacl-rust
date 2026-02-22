@@ -1,22 +1,24 @@
-use oxigraph::model::{vocab::rdf::TYPE, Graph, TermRef};
+use oxigraph::model::{vocab::rdf::TYPE, TermRef};
 
 use crate::{
     core::{constraints::ClassConstraint, path::Path, shape::Shape},
     utils,
-    validation::{Validate, ValidationResult, ViolationBuilder},
+    validation::{dataset::ValidationDataset, Validate, ValidationResult, ViolationBuilder},
     vocab::sh,
+    ShaclError,
 };
 
 impl<'a> Validate<'a> for ClassConstraint<'a> {
     fn validate(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
         _path: Option<&'a Path<'a>>,
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
-    ) -> Vec<ValidationResult<'a>> {
+    ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
+        let data_graph = validation_dataset.data_graph();
 
         for &value_node in value_nodes {
             if let Some(value_as_node) = utils::term_to_named_or_blank(value_node) {
@@ -44,6 +46,6 @@ impl<'a> Validate<'a> for ClassConstraint<'a> {
             }
         }
 
-        violations
+        Ok(violations)
     }
 }
