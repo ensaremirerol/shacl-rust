@@ -13,9 +13,8 @@ jobs:
     release-please:
         runs-on: ubuntu-latest
         outputs:
-            release_created: ${{ steps.release.outputs.release_created }}
             releases_created: ${{ steps.release.outputs.releases_created }}
-            shacl-rust--release_created: ${{ steps.release.outputs['shacl-rust--release_created'] }}
+            shacl-rust--release_created: ${{ steps.release.outputs['--release_created'] }}
             shacl-cli--release_created: ${{ steps.release.outputs['crates/shacl-cli--release_created'] }}
             shacl-mcp--release_created: ${{ steps.release.outputs['crates/shacl-mcp--release_created'] }}
             shacl-wasm--release_created: ${{ steps.release.outputs['crates/shacl-wasm--release_created'] }}
