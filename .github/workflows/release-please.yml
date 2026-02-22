@@ -3,7 +3,7 @@ name: Release Please
 on:
     push:
         branches:
-            - main
+            - dev
 
 permissions:
     contents: write
@@ -14,10 +14,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             releases_created: ${{ steps.release.outputs.releases_created }}
-            shacl-rust--release_created: ${{ steps.release.outputs['--release_created'] }}
-            shacl-cli--release_created: ${{ steps.release.outputs['crates/shacl-cli--release_created'] }}
-            shacl-mcp--release_created: ${{ steps.release.outputs['crates/shacl-mcp--release_created'] }}
-            shacl-wasm--release_created: ${{ steps.release.outputs['crates/shacl-wasm--release_created'] }}
+            prs_created: ${{ steps.release.outputs.prs_created }}
         steps:
             - name: Run release-please
               id: release
@@ -26,39 +23,6 @@ jobs:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   config-file: .github/release-please-config.json
                   manifest-file: .github/.release-please-manifest.json
+                  target-branch: main
 
-    publish-crates:
-        needs: release-please
-        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-
-            - name: Setup Rust
-              uses: actions-rust-lang/setup-rust-toolchain@v1
-              with:
-                  toolchain: stable
-
-            - name: Publish shacl-rust (main crate)
-              if: ${{ needs.release-please.outputs['shacl-rust--release_created'] == 'true' }}
-              run: |
-                  cd ${{ github.workspace }}
-                  cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-            # Wait for crates.io index to update
-            - name: Wait for crates.io index update
-              if: ${{ needs.release-please.outputs['shacl-rust--release_created'] == 'true' }}
-              run: sleep 45
-
-            - name: Publish shacl-cli
-              if: ${{ needs.release-please.outputs['crates/shacl-cli--release_created'] == 'true' }}
-              run: cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-            - name: Publish shacl-mcp
-              if: ${{ needs.release-please.outputs['crates/shacl-mcp--release_created'] == 'true' }}
-              run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-            - name: Publish shacl-wasm
-              if: ${{ needs.release-please.outputs['crates/shacl-wasm--release_created'] == 'true' }}
-              run: cargo publish --package shacl-wasm --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    # This job no longer needed - publishing happens in separate workflow
