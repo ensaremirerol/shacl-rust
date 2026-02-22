@@ -41,24 +41,18 @@ jobs:
                   toolchain: stable
 
             - name: Publish shacl-rust (main crate)
-              if: ${{ needs.release-please.outputs['shacl-rust--release_created'] == 'true' }}
               run: |
-                  cd ${{ github.workspace }}
-                  cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+                  cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
 
             # Wait for crates.io index to update
             - name: Wait for crates.io index update
-              if: ${{ needs.release-please.outputs['shacl-rust--release_created'] == 'true' }}
               run: sleep 45
 
             - name: Publish shacl-cli
-              if: ${{ needs.release-please.outputs['crates/shacl-cli--release_created'] == 'true' }}
-              run: cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+              run: cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
 
             - name: Publish shacl-mcp
-              if: ${{ needs.release-please.outputs['crates/shacl-mcp--release_created'] == 'true' }}
-              run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+              run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
 
             - name: Publish shacl-wasm
-              if: ${{ needs.release-please.outputs['crates/shacl-wasm--release_created'] == 'true' }}
-              run: cargo publish --package shacl-wasm --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+              run: cargo publish --package shacl-wasm --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
