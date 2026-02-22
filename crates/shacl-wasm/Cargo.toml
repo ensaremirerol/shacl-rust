@@ -1,6 +1,6 @@
 [package]
 name = "shacl-wasm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Ensar Emir EROL"]
 description = "WASM/JS/TS bindings for shacl-rust"
@@ -12,7 +12,7 @@ keywords = ["shacl", "rdf", "wasm", "npm", "typescript"]
 crate-type = ["cdylib"]
 
 [dependencies]
-shacl-rust = { version = "0.1.0", path = "../.." }
+shacl-rust = { version = "0.1.1", path = "../.." }
 serde_json = "1.0"
 wasm-bindgen = "0.2"
 oxigraph = { version = "0.5.5", default-features = false, features = ["js"] }
