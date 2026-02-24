@@ -10,45 +10,58 @@ use crate::{vocab::sh, Path};
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationReport<'a> {
     /// Overall conformance.
-    pub conforms: bool,
+    conforms: bool,
     /// Collected results.
-    pub results: Vec<ValidationResult<'a>>,
+    results: Vec<ValidationResult<'a>>,
 }
 
 /// One validation result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationResult<'a> {
     /// Focus node.
-    pub focus_node: TermRef<'a>,
+    focus_node: TermRef<'a>,
     /// Source shape.
-    pub source_shape: NamedOrBlankNodeRef<'a>,
+    source_shape: NamedOrBlankNodeRef<'a>,
     /// Optional source shape name.
-    pub source_shape_name: Option<String>,
+    source_shape_name: Option<String>,
     /// Constraint component.
-    pub source_constraint_component: Option<NamedNodeRef<'a>>,
+    source_constraint_component: Option<NamedNodeRef<'a>>,
     /// Human-readable constraint detail.
-    pub constraint_detail: Option<String>,
+    constraint_detail: Option<String>,
     /// Result severity.
-    pub severity: NamedNodeRef<'a>,
+    severity: NamedNodeRef<'a>,
     /// Property path when available.
-    pub result_path: Option<Path<'a>>,
+    result_path: Option<Path<'a>>,
     /// Value associated with the result.
-    pub value: Option<TermRef<'a>>,
+    value: Option<TermRef<'a>>,
     /// Messages.
-    pub messages: Vec<String>,
+    messages: Vec<String>,
     /// Nested evaluation trace.
-    pub trace: Vec<String>,
+    trace: Vec<String>,
     /// Nested results.
-    pub details: Vec<ValidationResult<'a>>,
+    details: Vec<ValidationResult<'a>>,
+}
+
+impl<'a> Default for ValidationReport<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> ValidationReport<'a> {
-    /// Creates an empty conforming report.
     pub fn new() -> Self {
-        ValidationReport {
+        Self {
             conforms: true,
             results: Vec::new(),
         }
+    }
+
+    pub fn get_conforms(&self) -> &bool {
+        &self.conforms
+    }
+
+    pub fn get_results(&self) -> &Vec<ValidationResult<'a>> {
+        &self.results
     }
 
     /// Returns the number of results.
@@ -69,6 +82,18 @@ impl<'a> ValidationReport<'a> {
             self.conforms = false;
         }
         self.results.extend(other.results);
+    }
+
+    pub fn add_result(&mut self, result: ValidationResult<'a>) {
+        self.conforms = false;
+        self.results.push(result);
+    }
+
+    pub fn extend_results(&mut self, results: Vec<ValidationResult<'a>>) {
+        if !results.is_empty() {
+            self.conforms = false;
+            self.results.extend(results);
+        }
     }
 
     /// Converts the report to an RDF graph.
@@ -199,7 +224,67 @@ impl<'a> ValidationReport<'a> {
     }
 }
 
-impl ValidationResult<'_> {
+impl<'a> ValidationResult<'a> {
+    pub fn new(
+        focus_node: TermRef<'a>,
+        source_shape: NamedOrBlankNodeRef<'a>,
+        severity: NamedNodeRef<'a>,
+    ) -> Self {
+        Self {
+            focus_node,
+            source_shape,
+            source_shape_name: None,
+            source_constraint_component: None,
+            constraint_detail: None,
+            severity,
+            result_path: None,
+            value: None,
+            messages: Vec::new(),
+            trace: Vec::new(),
+            details: Vec::new(),
+        }
+    }
+
+    pub fn with_source_shape_name(mut self, name: Option<String>) -> Self {
+        self.source_shape_name = name;
+        self
+    }
+
+    pub fn with_source_constraint_component(mut self, component: Option<NamedNodeRef<'a>>) -> Self {
+        self.source_constraint_component = component;
+        self
+    }
+
+    pub fn with_constraint_detail(mut self, detail: Option<String>) -> Self {
+        self.constraint_detail = detail;
+        self
+    }
+
+    pub fn with_result_path(mut self, path: Option<Path<'a>>) -> Self {
+        self.result_path = path;
+        self
+    }
+
+    pub fn with_value(mut self, value: Option<TermRef<'a>>) -> Self {
+        self.value = value;
+        self
+    }
+
+    pub fn with_messages(mut self, messages: Option<Vec<String>>) -> Self {
+        self.messages = messages.unwrap_or_default();
+        self
+    }
+
+    pub fn with_trace(mut self, trace: Option<Vec<String>>) -> Self {
+        self.trace = trace.unwrap_or_default();
+        self
+    }
+
+    pub fn with_details(mut self, details: Option<Vec<ValidationResult<'a>>>) -> Self {
+        self.details = details.unwrap_or_default();
+        self
+    }
+
     pub fn as_json(&self) -> serde_json::Value {
         let mut result_obj = serde_json::json!({
             "focusNode": self.focus_node.to_string(),
@@ -225,11 +310,12 @@ impl ValidationResult<'_> {
         }
         result_obj
     }
-}
 
-impl<'a> Default for ValidationReport<'a> {
-    fn default() -> Self {
-        Self::new()
+    pub fn get_repr(&self) -> String {
+        format!(
+            "ValidationResult(focusNode: {}, sourceShape: {}, severity: {})",
+            self.focus_node, self.source_shape, self.severity
+        )
     }
 }
 
@@ -267,6 +353,10 @@ impl<'a> Display for ValidationReport<'a> {
                 writeln!(f, "\n[{}] Severity: {}", idx + 1, result.severity)?;
                 writeln!(f, "  Focus Node: {}", result.focus_node)?;
                 writeln!(f, "  Source Shape: {}", result.source_shape)?;
+
+                if let Some(component) = result.source_constraint_component {
+                    writeln!(f, "  Source Constraint Component: {}", component)?;
+                }
 
                 if let Some(path) = &result.result_path {
                     writeln!(f, "  Result Path: {}", path)?;

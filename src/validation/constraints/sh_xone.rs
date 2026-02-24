@@ -31,11 +31,14 @@ impl<'a> Validate<'a> for XoneConstraint<'a> {
                     &mut nested_report,
                 );
 
-                if nested_report.conforms {
+                if *nested_report.get_conforms() {
                     conforming_count += 1;
                     conforming_shapes.push(nested_shape.node.to_string());
                 } else {
-                    all_nested_results.extend(nested_report.results);
+                    nested_report
+                        .get_results()
+                        .iter()
+                        .for_each(|r| all_nested_results.push(r.clone()));
                 }
             }
 
@@ -59,9 +62,7 @@ impl<'a> Validate<'a> for XoneConstraint<'a> {
                         "sh:xone with {} shapes, {} conforming",
                         self.0.len(),
                         conforming_count
-                    ))
-                    .trace_entry("sh:xone validation")
-                    .details(all_nested_results);
+                    ));
 
                 violations.push(shape.build_validation_result(builder));
             }

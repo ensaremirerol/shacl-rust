@@ -23,7 +23,7 @@ impl<'a> Validate<'a> for NotConstraint<'a> {
             self.0
                 .validate_focus_node(validation_dataset, value_node, &mut nested_report);
 
-            if nested_report.conforms {
+            if *nested_report.get_conforms() {
                 let builder = ViolationBuilder::new(focus_node)
                     .value(value_node)
                     .message("Value conforms to shape in sh:not (should not conform)")
