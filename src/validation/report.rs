@@ -292,6 +292,11 @@ impl<'a> ValidationResult<'a> {
             "severity": self.severity.to_string(),
         });
 
+        if let Some(ref source_constraint_component) = self.source_constraint_component {
+            result_obj["sourceConstraintComponent"] =
+                serde_json::json!(source_constraint_component.to_string());
+        }
+
         if let Some(ref path) = self.result_path {
             result_obj["resultPath"] = serde_json::json!(path.to_string());
         }
@@ -390,6 +395,10 @@ impl<'a> Display for ValidationResult<'a> {
         writeln!(f, "Focus Node: {}", self.focus_node)?;
         writeln!(f, "Source Shape: {}", self.source_shape)?;
 
+        if let Some(component) = self.source_constraint_component {
+            writeln!(f, "Source Constraint Component: {}", component)?;
+        }
+
         if let Some(path) = &self.result_path {
             writeln!(f, "Result Path: {}", path)?;
         }
@@ -432,6 +441,10 @@ fn write_validation_result_details(
         writeln!(f, "{}- [{}] Severity: {}", pad, idx + 1, result.severity)?;
         writeln!(f, "{}  Focus Node: {}", pad, result.focus_node)?;
         writeln!(f, "{}  Source Shape: {}", pad, result.source_shape)?;
+
+        if let Some(component) = result.source_constraint_component {
+            writeln!(f, "{}  Source Constraint Component: {}", pad, component)?;
+        }
 
         if let Some(path) = &result.result_path {
             writeln!(f, "{}  Result Path: {}", pad, path)?;
