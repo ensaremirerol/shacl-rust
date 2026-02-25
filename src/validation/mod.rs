@@ -1,6 +1,7 @@
 pub mod constraints;
 pub mod dataset;
 pub mod report;
+mod violation_builder;
 
 use oxigraph::model::{Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use std::collections::{HashMap, HashSet};
@@ -14,6 +15,7 @@ use crate::{
     validation::{
         dataset::ValidationDataset,
         report::{ValidationReport, ValidationResult},
+        violation_builder::ViolationBuilder,
     },
     vocab::sh,
     ShaclError,
@@ -49,85 +51,6 @@ pub trait Validate<'a> {
         value_nodes: &[TermRef<'a>],
         shape: &'a Shape<'a>,
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError>;
-}
-
-/// Context for validating one focus/value traversal.
-#[derive(Debug, Clone)]
-pub struct ValidationContext<'a> {
-    /// Original focus node.
-    pub focus_node: TermRef<'a>,
-    /// Traversed path when validating a property shape.
-    pub path: Option<&'a Path<'a>>,
-    /// Value nodes under validation.
-    pub value_nodes: Vec<TermRef<'a>>,
-    /// Trace entries for nested shape evaluation.
-    pub trace: Vec<String>,
-}
-
-/// Builder for `ValidationResult`.
-#[derive(Debug, Clone)]
-pub struct ViolationBuilder<'a> {
-    pub focus_node: TermRef<'a>,
-    pub value: Option<TermRef<'a>>,
-    pub constraint_messages: Vec<String>,
-    pub constraint_component: Option<NamedNodeRef<'a>>,
-    pub constraint_detail: Option<String>,
-    pub trace: Vec<String>,
-    pub details: Vec<ValidationResult<'a>>,
-}
-
-impl<'a> ViolationBuilder<'a> {
-    pub fn new(focus_node: TermRef<'a>) -> Self {
-        Self {
-            focus_node,
-            value: None,
-            constraint_messages: Vec::new(),
-            constraint_component: None,
-            constraint_detail: None,
-            trace: Vec::new(),
-            details: Vec::new(),
-        }
-    }
-
-    pub fn value(mut self, value: TermRef<'a>) -> Self {
-        self.value = Some(value);
-        self
-    }
-
-    pub fn message(mut self, msg: impl Into<String>) -> Self {
-        self.constraint_messages.push(msg.into());
-        self
-    }
-
-    pub fn messages(mut self, messages: impl IntoIterator<Item = String>) -> Self {
-        self.constraint_messages.extend(messages);
-        self
-    }
-
-    pub fn component(mut self, component: NamedNodeRef<'a>) -> Self {
-        self.constraint_component = Some(component);
-        self
-    }
-
-    pub fn detail(mut self, detail: impl Into<String>) -> Self {
-        self.constraint_detail = Some(detail.into());
-        self
-    }
-
-    pub fn trace(mut self, trace: Vec<String>) -> Self {
-        self.trace = trace;
-        self
-    }
-
-    pub fn trace_entry(mut self, entry: impl Into<String>) -> Self {
-        self.trace.push(entry.into());
-        self
-    }
-
-    pub fn details(mut self, details: Vec<ValidationResult<'a>>) -> Self {
-        self.details = details;
-        self
-    }
 }
 
 /// Validates a graph against all provided shapes.
@@ -167,10 +90,7 @@ impl<'a> Shape<'a> {
         validation_dataset: &'a ValidationDataset,
         target_cache: &TargetResolutionCache<'a>,
     ) -> ValidationReport<'a> {
-        let mut report = ValidationReport {
-            conforms: true,
-            results: Vec::new(),
-        };
+        let mut report = ValidationReport::new();
 
         if self.deactivated {
             return report;
@@ -221,7 +141,9 @@ impl<'a> Shape<'a> {
         validation_dataset: &'a ValidationDataset,
         node: NamedOrBlankNodeRef<'a>,
     ) -> bool {
-        self.validate_node_report(validation_dataset, node).conforms
+        *self
+            .validate_node_report(validation_dataset, node)
+            .get_conforms()
     }
 
     fn validate_node_report(
@@ -229,10 +151,7 @@ impl<'a> Shape<'a> {
         validation_dataset: &'a ValidationDataset,
         node: NamedOrBlankNodeRef<'a>,
     ) -> ValidationReport<'a> {
-        let mut report = ValidationReport {
-            conforms: true,
-            results: Vec::new(),
-        };
+        let mut report = ValidationReport::new();
 
         if self.deactivated {
             return report;
@@ -394,11 +313,7 @@ impl<'a> Shape<'a> {
                                 ))
                                 .component(sh::QUALIFIED_MIN_COUNT_CONSTRAINT_COMPONENT)
                                 .detail(format!("sh:qualifiedMinCount {}", min));
-
-                            report.conforms = false;
-                            report
-                                .results
-                                .push(property_shape.build_validation_result(builder));
+                            report.add_result(property_shape.build_validation_result(builder));
                         }
                     }
 
@@ -411,11 +326,7 @@ impl<'a> Shape<'a> {
                                 ))
                                 .component(sh::QUALIFIED_MAX_COUNT_CONSTRAINT_COMPONENT)
                                 .detail(format!("sh:qualifiedMaxCount {}", max));
-
-                            report.conforms = false;
-                            report
-                                .results
-                                .push(property_shape.build_validation_result(builder));
+                            report.add_result(property_shape.build_validation_result(builder));
                         }
                     }
                     continue;
@@ -472,16 +383,16 @@ impl<'a> Shape<'a> {
         let data_graph = validation_dataset.data_graph();
         for triple in data_graph.triples_for_subject(focus_as_node) {
             if !allowed_properties.contains(&triple.predicate) {
-                self.add_violation_with_component(
-                    focus_node,
-                    Some(triple.object),
-                    Some(&format!(
+                let builder = ViolationBuilder::new(focus_node)
+                    .message(format!(
                         "Property {} is not allowed (closed shape)",
                         triple.predicate
-                    )),
-                    Some(sh::CLOSED_CONSTRAINT_COMPONENT),
-                    report,
-                );
+                    ))
+                    .component(sh::CLOSED_CONSTRAINT_COMPONENT)
+                    .detail(format!("Unexpected property: {}", triple.predicate))
+                    .value(triple.object);
+
+                report.add_result(self.build_validation_result(builder));
             }
         }
     }
@@ -688,10 +599,7 @@ impl<'a> Shape<'a> {
         };
 
         if let Ok(violations) = violations {
-            for violation in violations {
-                report.conforms = false;
-                report.results.push(violation);
-            }
+            report.extend_results(violations);
         }
     }
 
@@ -757,97 +665,14 @@ impl<'a> Shape<'a> {
             messages.retain(|msg| unique_messages.insert(msg.clone()));
         }
 
-        ValidationResult {
-            focus_node: builder.focus_node,
-            source_shape: self.node,
-            source_shape_name: self.name.clone(),
-            source_constraint_component: builder.constraint_component,
-            constraint_detail: builder.constraint_detail,
-            severity: self.severity,
-            result_path: self.path.clone(),
-            value: builder.value,
-            messages,
-            trace: builder.trace,
-            details: builder.details,
-        }
-    }
-
-    /// Adds a violation to the report using a builder
-    fn add_violation_from_builder(
-        &'a self,
-        builder: ViolationBuilder<'a>,
-        report: &mut ValidationReport<'a>,
-    ) {
-        report.conforms = false;
-
-        let mut messages = Vec::new();
-
-        // Include all constraint-specific messages, then shape-level messages.
-        if !builder.constraint_messages.is_empty() {
-            messages.extend(builder.constraint_messages);
-        }
-        messages.extend(self.message.iter().cloned());
-
-        if !messages.is_empty() {
-            let mut unique_messages = HashSet::new();
-            messages.retain(|msg| unique_messages.insert(msg.clone()));
-        }
-
-        let result = ValidationResult {
-            focus_node: builder.focus_node,
-            source_shape: self.node,
-            source_shape_name: self.name.clone(),
-            source_constraint_component: builder.constraint_component,
-            constraint_detail: builder.constraint_detail,
-            severity: self.severity,
-            result_path: self.path.clone(),
-            value: builder.value,
-            messages,
-            trace: builder.trace,
-            details: builder.details,
-        };
-
-        report.results.push(result);
-    }
-
-    /// Adds a violation to the report
-    #[allow(dead_code)]
-    fn add_violation(
-        &'a self,
-        focus_node: TermRef<'a>,
-        value: Option<TermRef<'a>>,
-        constraint_message: Option<&str>,
-        report: &mut ValidationReport<'a>,
-    ) {
-        let mut builder = ViolationBuilder::new(focus_node);
-        if let Some(v) = value {
-            builder = builder.value(v);
-        }
-        if let Some(msg) = constraint_message {
-            builder = builder.message(msg);
-        }
-        self.add_violation_from_builder(builder, report);
-    }
-
-    /// Adds a violation to the report with a specific constraint component
-    fn add_violation_with_component(
-        &'a self,
-        focus_node: TermRef<'a>,
-        value: Option<TermRef<'a>>,
-        constraint_message: Option<&str>,
-        constraint_component: Option<NamedNodeRef<'a>>,
-        report: &mut ValidationReport<'a>,
-    ) {
-        let mut builder = ViolationBuilder::new(focus_node);
-        if let Some(v) = value {
-            builder = builder.value(v);
-        }
-        if let Some(msg) = constraint_message {
-            builder = builder.message(msg);
-        }
-        if let Some(comp) = constraint_component {
-            builder = builder.component(comp);
-        }
-        self.add_violation_from_builder(builder, report);
+        ValidationResult::new(builder.focus_node, self.node, self.severity)
+            .with_source_shape_name(self.name.clone())
+            .with_source_constraint_component(builder.constraint_component)
+            .with_constraint_detail(builder.constraint_detail)
+            .with_result_path(self.path.clone())
+            .with_value(builder.value)
+            .with_messages(Some(messages))
+            .with_trace(Some(builder.trace))
+            .with_details(Some(builder.details))
     }
 }

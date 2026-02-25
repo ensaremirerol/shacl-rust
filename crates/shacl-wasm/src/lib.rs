@@ -73,7 +73,7 @@ pub fn validate_graphs_conforms(
     let parsed_shapes = parse_shapes(validation_dataset.shapes_graph())
         .map_err(|e| to_js_error(format!("Failed to parse SHACL shapes: {}", e)))?;
 
-    Ok(validate(&validation_dataset, &parsed_shapes).conforms)
+    Ok(*validate(&validation_dataset, &parsed_shapes).get_conforms())
 }
 
 #[wasm_bindgen]

@@ -3,7 +3,7 @@ name: Release Please
 on:
     push:
         branches:
-            - dev
+            - main
         paths:
             - "crates/**"
             - "src/**"
@@ -16,6 +16,7 @@ permissions:
 jobs:
     release-please:
         runs-on: ubuntu-latest
+        if: github.actor != 'github-actions[bot]'
         outputs:
             releases_created: ${{ steps.release.outputs.releases_created }}
 
@@ -55,6 +56,3 @@ jobs:
 
             - name: Publish shacl-mcp
               run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
-
-            - name: Publish shacl-wasm
-              run: cargo publish --package shacl-wasm --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"

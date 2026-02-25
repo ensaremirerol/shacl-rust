@@ -24,7 +24,7 @@ impl<'a> Validate<'a> for NodeConstraint<'a> {
                 let nested_report = self
                     .0
                     .validate_node_report(validation_dataset, value_as_node);
-                if !nested_report.conforms {
+                if !*nested_report.get_conforms() {
                     let is_focus = value_node == focus_node;
                     let builder = ViolationBuilder::new(focus_node)
                         .value(value_node)
@@ -37,9 +37,7 @@ impl<'a> Validate<'a> for NodeConstraint<'a> {
                         .detail(format!(
                             "sh:node constraint referencing shape {}",
                             self.0.node
-                        ))
-                        .trace_entry("sh:node validation")
-                        .details(nested_report.results);
+                        ));
 
                     violations.push(shape.build_validation_result(builder));
                 }

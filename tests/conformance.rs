@@ -471,13 +471,13 @@ fn test_shacl_conformance() {
 
                         match test_case.expected_outcome {
                             ExpectedOutcome::Conforms(expected_conforms) => {
-                                if report.conforms == expected_conforms {
+                                if *report.get_conforms() == expected_conforms {
                                     println!(
                                         "✅ PASS: {} (conforms: {}, {} shapes, {} results)",
                                         test_name,
-                                        report.conforms,
+                                        *report.get_conforms(),
                                         shapes.len(),
-                                        report.results.len()
+                                        report.get_results().len()
                                     );
                                     passed += 1;
                                 } else {
@@ -485,22 +485,24 @@ fn test_shacl_conformance() {
                                         "❌ FAIL: {} (expected conforms: {}, got: {}, {} results)",
                                         test_name,
                                         expected_conforms,
-                                        report.conforms,
-                                        report.results.len()
+                                        *report.get_conforms(),
+                                        report.get_results().len()
                                     );
-                                    for (i, result) in report.results.iter().take(3).enumerate() {
-                                        println!("  Result {}: {:?}", i + 1, result.messages);
+                                    for (i, result) in
+                                        report.get_results().iter().take(3).enumerate()
+                                    {
+                                        println!("  Result {}: {:?}", i + 1, result.get_repr());
                                     }
                                     failed += 1;
                                 }
                             }
                             ExpectedOutcome::Failure => {
-                                if !report.conforms {
+                                if !*report.get_conforms() {
                                     println!(
                                         "✅ PASS: {} (expected failure observed, {} shapes, {} results)",
                                         test_name,
                                         shapes.len(),
-                                        report.results.len()
+                                        report.get_results().len()
                                     );
                                     passed += 1;
                                 } else {
