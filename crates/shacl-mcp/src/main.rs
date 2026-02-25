@@ -158,7 +158,7 @@ impl ShaclServer {
 
         let report = validate(&validation_dataset, &shapes);
 
-        Ok(json!({ "conforms": report.conforms }).to_string())
+        Ok(json!({ "conforms": *report.get_conforms() }).to_string())
     }
 
     #[tool(description = "Validate RDF graph syntax")]

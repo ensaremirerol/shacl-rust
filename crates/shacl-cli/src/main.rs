@@ -377,7 +377,7 @@ fn validate_command(
     }
 
     // Exit with error code if validation failed
-    if !report.conforms {
+    if !*report.get_conforms() {
         std::process::exit(1);
     }
 

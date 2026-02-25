@@ -30,11 +30,14 @@ impl<'a> Validate<'a> for OrConstraint<'a> {
                     &mut nested_report,
                 );
 
-                if nested_report.conforms {
+                if *nested_report.get_conforms() {
                     any_conforms = true;
                     break;
                 } else {
-                    all_nested_results.extend(nested_report.results);
+                    nested_report
+                        .get_results()
+                        .iter()
+                        .for_each(|r| all_nested_results.push(r.clone()));
                 }
             }
 
