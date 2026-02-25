@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.3...shacl-rust-v0.1.4) (2026-02-25)
+
+
+### Bug Fixes
+
+* ci ([12bbc72](https://github.com/ensaremirerol/shacl-rust/commit/12bbc7215ca6c8e59b33c09008d00a2f1108b04d))
+* ci ([15e8aa0](https://github.com/ensaremirerol/shacl-rust/commit/15e8aa09947558909aa33116c3a3d4479513480c))
+* wasm ([f43e64f](https://github.com/ensaremirerol/shacl-rust/commit/f43e64f22c7999d9e3b75bcfca07ecb100a3134c))
+
+
+### Miscellaneous
+
+* release main ([deae4e3](https://github.com/ensaremirerol/shacl-rust/commit/deae4e3dc582085f9573181d319d2a9295d73351))
+* release main ([9fc5303](https://github.com/ensaremirerol/shacl-rust/commit/9fc5303f3e4927dc56fc86b058bb9f34c20464aa))
+
 ## [0.1.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.2...shacl-rust-v0.1.3) (2026-02-22)
 
 
