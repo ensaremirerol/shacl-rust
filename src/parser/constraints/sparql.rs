@@ -1,4 +1,8 @@
+use std::sync::Arc;
+
+use dashmap::DashMap;
 use oxigraph::model::{vocab::rdf, Graph, NamedOrBlankNodeRef, TermRef};
+use spargebra::algebra::GraphPattern;
 
 use crate::{
     core::constraints::{Constraint, SparqlConstraint, SparqlExecutable},
@@ -32,6 +36,7 @@ fn parse_executable<'a>(
 fn parse_direct_shape_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
+    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
 ) -> Vec<Constraint<'a>> {
     let mut constraints = Vec::new();
     let mut seen_sources = std::collections::HashSet::new();
@@ -123,6 +128,7 @@ fn parse_component_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
     is_property_shape: bool,
+    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
 ) -> Vec<Constraint<'a>> {
     let mut constraints = Vec::new();
 
@@ -178,12 +184,15 @@ pub fn parse_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
     is_property_shape: bool,
+    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
 ) -> Result<Vec<Constraint<'a>>, ShaclError> {
-    let mut constraints = parse_direct_shape_sparql_constraints(graph, shape_node);
+    let mut constraints =
+        parse_direct_shape_sparql_constraints(graph, shape_node, Arc::clone(&sparql_graph_cache));
     constraints.extend(parse_component_sparql_constraints(
         graph,
         shape_node,
         is_property_shape,
+        Arc::clone(&sparql_graph_cache),
     ));
     Ok(constraints)
 }
