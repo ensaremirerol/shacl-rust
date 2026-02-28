@@ -4,12 +4,14 @@ pub mod constraints;
 pub mod path;
 pub mod target;
 
+use dashmap::DashMap;
 use log::debug;
 use oxigraph::model::{
     vocab::{rdf, rdfs},
     Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef,
 };
-use std::collections::HashSet;
+use spargebra::algebra::GraphPattern;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     core::{
@@ -324,6 +326,7 @@ fn parse_all_constraints<'a>(
     is_property_shape: bool,
 ) -> Result<Vec<Constraint<'a>>, ShaclError> {
     let mut constraints = Vec::new();
+    let spqrql_graph_cache = DashMap::<(GraphPattern, usize), String>::new();
 
     // Call each constraint parser in order
     constraints.extend(constraints::class::parser().parse_constraint(node, graph)?);
@@ -356,6 +359,7 @@ fn parse_all_constraints<'a>(
         graph,
         node,
         is_property_shape,
+        Arc::new(spqrql_graph_cache),
     )?);
 
     Ok(constraints)
