@@ -4,14 +4,12 @@ pub mod constraints;
 pub mod path;
 pub mod target;
 
-use dashmap::DashMap;
 use log::debug;
 use oxigraph::model::{
     vocab::{rdf, rdfs},
     Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef,
 };
-use spargebra::algebra::GraphPattern;
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use crate::{
     core::{
@@ -45,15 +43,7 @@ pub fn parse_shapes(graph: &Graph) -> Result<Vec<Shape<'_>>, ShaclError> {
         visited.insert(shape_node);
 
         debug!("Parsing shape: {}", shape_node);
-        match parse_shape(graph, shape_node, None) {
-            Ok(shape) => {
-                debug!("Successfully parsed shape: {}", shape_node);
-                shapes.push(shape);
-            }
-            Err(e) => {
-                log::warn!("Failed to parse shape {}: {}", shape_node, e);
-            }
-        }
+        shapes.push(parse_shape(graph, shape_node, None)?);
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -326,7 +316,6 @@ fn parse_all_constraints<'a>(
     is_property_shape: bool,
 ) -> Result<Vec<Constraint<'a>>, ShaclError> {
     let mut constraints = Vec::new();
-    let spqrql_graph_cache = DashMap::<(GraphPattern, usize), String>::new();
 
     // Call each constraint parser in order
     constraints.extend(constraints::class::parser().parse_constraint(node, graph)?);
@@ -359,7 +348,6 @@ fn parse_all_constraints<'a>(
         graph,
         node,
         is_property_shape,
-        Arc::new(spqrql_graph_cache),
     )?);
 
     Ok(constraints)

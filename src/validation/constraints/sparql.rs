@@ -2,7 +2,6 @@ use oxigraph::{
     model::{NamedOrBlankNodeRef, TermRef},
     sparql::{QueryResults, SparqlEvaluator},
 };
-use spargebra::{algebra::GraphPattern, Query, SparqlParser};
 
 use crate::{
     core::{
@@ -25,74 +24,6 @@ fn constraint_component<'a>(c: &'a SparqlConstraint<'a>) -> oxigraph::model::Nam
     } else {
         sh::SPARQL_CONSTRAINT_COMPONENT
     }
-}
-
-fn unsupported_in_pattern(
-    pattern: &GraphPattern,
-    remaining_select_projects: usize,
-) -> Option<&'static str> {
-    match pattern {
-        GraphPattern::Minus { .. } => Some("MINUS is not supported for SHACL pre-binding"),
-        GraphPattern::Service { .. } => Some("SERVICE is not supported for SHACL pre-binding"),
-        GraphPattern::Project { .. } if remaining_select_projects == 0 => {
-            Some("Nested SELECT is not supported for SHACL pre-binding")
-        }
-        GraphPattern::Join { left, right } | GraphPattern::Union { left, right } => {
-            unsupported_in_pattern(left, remaining_select_projects)
-                .or_else(|| unsupported_in_pattern(right, remaining_select_projects))
-        }
-        GraphPattern::LeftJoin { left, right, .. } => {
-            unsupported_in_pattern(left, remaining_select_projects)
-                .or_else(|| unsupported_in_pattern(right, remaining_select_projects))
-        }
-        GraphPattern::Lateral { left, right } => {
-            unsupported_in_pattern(left, remaining_select_projects)
-                .or_else(|| unsupported_in_pattern(right, remaining_select_projects))
-        }
-        GraphPattern::Filter { inner, .. }
-        | GraphPattern::Graph { inner, .. }
-        | GraphPattern::Extend { inner, .. }
-        | GraphPattern::OrderBy { inner, .. }
-        | GraphPattern::Distinct { inner }
-        | GraphPattern::Reduced { inner }
-        | GraphPattern::Slice { inner, .. }
-        | GraphPattern::Group { inner, .. } => {
-            unsupported_in_pattern(inner, remaining_select_projects)
-        }
-        GraphPattern::Project { inner, .. } => {
-            unsupported_in_pattern(inner, remaining_select_projects.saturating_sub(1))
-        }
-        GraphPattern::Bgp { .. } | GraphPattern::Path { .. } | GraphPattern::Values { .. } => None,
-    }
-}
-
-fn unsupported_prebinding_construct(
-    query: &str,
-    prefixes: &[(String, String)],
-) -> Option<&'static str> {
-    let mut parser = SparqlParser::new();
-    for (prefix, namespace) in prefixes {
-        if let Ok(with_prefix) = parser
-            .clone()
-            .with_prefix(prefix.clone(), namespace.clone())
-        {
-            parser = with_prefix;
-        }
-    }
-
-    let parsed = match parser.parse_query(query) {
-        Ok(parsed) => parsed,
-        Err(_) => return None,
-    };
-
-    let (pattern, remaining_select_projects) = match parsed {
-        Query::Select { pattern, .. } => (pattern, 1),
-        Query::Ask { pattern, .. }
-        | Query::Construct { pattern, .. }
-        | Query::Describe { pattern, .. } => (pattern, 0),
-    };
-
-    unsupported_in_pattern(&pattern, remaining_select_projects)
 }
 
 fn normalize_binding_value(value: &str) -> String {
@@ -169,25 +100,6 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
         }
 
         let query_text = self.executable.query();
-
-        if let Some(reason) = unsupported_prebinding_construct(query_text, &self.prefixes) {
-            let mut builder = ViolationBuilder::new(focus_node)
-                .component(constraint_component(self))
-                .detail(format!("{}: {}", reason, query_text.replace('\n', " ")));
-
-            if self.messages.is_empty() {
-                builder = builder.message("SPARQL pre-binding violation");
-            } else {
-                builder = builder.messages(self.messages.clone());
-            }
-
-            if let Some(value) = value_nodes.first().copied() {
-                builder = builder.value(value);
-            }
-
-            violations.push(shape.build_validation_result(builder));
-            return Ok(violations);
-        }
 
         for maybe_value in run_once_targets {
             let mut bindings: Vec<(String, String)> = Vec::new();

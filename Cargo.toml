@@ -14,7 +14,6 @@ exclude = [
     "examples/*",
     ".github/*",
     ".devcontainer/*",
-    "",
 ]
 
 [workspace]
@@ -38,7 +37,6 @@ regex = "1.10"
 # SPARQL parser/algebra inspection
 spargebra = "0.4.5"
 serde_json = "1.0.149"
-dashmap = { version = "6.1.0", features = ["rayon"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # RDF handling
