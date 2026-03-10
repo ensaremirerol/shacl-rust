@@ -1,8 +1,7 @@
-use std::sync::Arc;
+use std::collections::HashSet;
 
-use dashmap::DashMap;
 use oxigraph::model::{vocab::rdf, Graph, NamedOrBlankNodeRef, TermRef};
-use spargebra::algebra::GraphPattern;
+use spargebra::{algebra::GraphPattern, term::Variable, Query, SparqlParser};
 
 use crate::{
     core::constraints::{Constraint, SparqlConstraint, SparqlExecutable},
@@ -17,27 +16,134 @@ use crate::{
 fn parse_executable<'a>(
     graph: &'a Graph,
     executable_node: NamedOrBlankNodeRef<'a>,
-) -> Option<SparqlExecutable> {
-    if let Some(TermRef::Literal(lit)) =
-        graph.object_for_subject_predicate(executable_node, sh::SELECT)
-    {
-        return Some(SparqlExecutable::Select(lit.value().to_string()));
+) -> Result<Option<SparqlExecutable>, ShaclError> {
+    let sparql_executable = {
+        if let Some(TermRef::Literal(lit)) =
+            graph.object_for_subject_predicate(executable_node, sh::SELECT)
+        {
+            SparqlExecutable::Select(lit.value().to_string())
+        } else if let Some(TermRef::Literal(lit)) =
+            graph.object_for_subject_predicate(executable_node, sh::ASK)
+        {
+            SparqlExecutable::Ask(lit.value().to_string())
+        } else {
+            return Ok(None);
+        }
+    };
+
+    let error = unsupported_prebinding_construct(
+        match &sparql_executable {
+            SparqlExecutable::Select(query) | SparqlExecutable::Ask(query) => query,
+        },
+        &parse_shacl_prefixes(graph, executable_node),
+    );
+
+    if let Some(error) = error {
+        return Err(ShaclError::Parse(format!(
+            "Unsupported SPARQL construct for SHACL pre-binding: {}",
+            error
+        )));
     }
 
-    if let Some(TermRef::Literal(lit)) =
-        graph.object_for_subject_predicate(executable_node, sh::ASK)
-    {
-        return Some(SparqlExecutable::Ask(lit.value().to_string()));
+    Ok(Some(sparql_executable))
+}
+
+fn unsupported_in_pattern(
+    pattern: &GraphPattern,
+    remaining_select_projects: usize,
+    required_prebound_vars: &HashSet<Variable>,
+) -> Option<&'static str> {
+    match pattern {
+        GraphPattern::Minus { .. } => Some("MINUS is not supported for SHACL pre-binding"),
+        GraphPattern::Service { .. } => Some("SERVICE is not supported for SHACL pre-binding"),
+        GraphPattern::Project { variables, inner } if remaining_select_projects == 0 => {
+            // Nested SELECT is only allowed if it explicitly projects all pre-bound variables
+            let projected_vars: HashSet<_> = variables.iter().cloned().collect();
+            if !required_prebound_vars.is_subset(&projected_vars) {
+                return Some(
+                    "Nested SELECT must explicitly project all pre-bound variables (e.g., $this)",
+                );
+            }
+            unsupported_in_pattern(inner, 0, required_prebound_vars)
+        }
+        GraphPattern::Join { left, right } | GraphPattern::Union { left, right } => {
+            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
+                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
+            )
+        }
+        GraphPattern::LeftJoin { left, right, .. } => {
+            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
+                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
+            )
+        }
+        GraphPattern::Lateral { left, right } => {
+            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
+                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
+            )
+        }
+        GraphPattern::Filter { inner, .. }
+        | GraphPattern::Graph { inner, .. }
+        | GraphPattern::Extend { inner, .. }
+        | GraphPattern::OrderBy { inner, .. }
+        | GraphPattern::Distinct { inner }
+        | GraphPattern::Reduced { inner }
+        | GraphPattern::Slice { inner, .. }
+        | GraphPattern::Group { inner, .. } => {
+            unsupported_in_pattern(inner, remaining_select_projects, required_prebound_vars)
+        }
+        GraphPattern::Project { inner, .. } => unsupported_in_pattern(
+            inner,
+            remaining_select_projects.saturating_sub(1),
+            required_prebound_vars,
+        ),
+        GraphPattern::Bgp { .. } | GraphPattern::Path { .. } | GraphPattern::Values { .. } => None,
+    }
+}
+
+fn unsupported_prebinding_construct(
+    query: &str,
+    prefixes: &[(String, String)],
+) -> Option<&'static str> {
+    let mut parser = SparqlParser::new();
+    for (prefix, namespace) in prefixes {
+        if let Ok(with_prefix) = parser
+            .clone()
+            .with_prefix(prefix.clone(), namespace.clone())
+        {
+            parser = with_prefix;
+        }
     }
 
-    None
+    let parsed = match parser.parse_query(query) {
+        Ok(parsed) => parsed,
+        Err(_) => return None,
+    };
+
+    let (pattern, remaining_select_projects, prebound_vars) = match parsed {
+        Query::Select { pattern, .. } => {
+            // For SELECT queries, $this is always pre-bound
+            let mut vars = HashSet::new();
+            vars.insert(Variable::new_unchecked("this"));
+            (pattern, 1, vars)
+        }
+        Query::Ask { pattern, .. } => {
+            // For ASK queries, $this is pre-bound
+            let mut vars = HashSet::new();
+            vars.insert(Variable::new_unchecked("this"));
+            (pattern, 0, vars)
+        }
+        Query::Construct { pattern, .. } | Query::Describe { pattern, .. } => {
+            (pattern, 0, HashSet::new())
+        }
+    };
+
+    unsupported_in_pattern(&pattern, remaining_select_projects, &prebound_vars)
 }
 
 fn parse_direct_shape_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
-    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
-) -> Vec<Constraint<'a>> {
+) -> Result<Vec<Constraint<'a>>, ShaclError> {
     let mut constraints = Vec::new();
     let mut seen_sources = std::collections::HashSet::new();
 
@@ -48,10 +154,11 @@ fn parse_direct_shape_sparql_constraints<'a>(
 
         if !seen_sources.insert(executable_node) {
             continue;
-        }
+        };
 
-        let Some(executable) = parse_executable(graph, executable_node) else {
-            continue;
+        let executable = match parse_executable(graph, executable_node)? {
+            Some(executable) => executable,
+            None => continue,
         };
 
         constraints.push(Constraint::Sparql(SparqlConstraint {
@@ -65,19 +172,21 @@ fn parse_direct_shape_sparql_constraints<'a>(
     }
 
     if seen_sources.insert(shape_node) {
-        if let Some(executable) = parse_executable(graph, shape_node) {
-            constraints.push(Constraint::Sparql(SparqlConstraint {
-                source_constraint: Some(shape_node),
-                source_constraint_component: None,
-                executable,
-                messages: get_all_string_values(graph, shape_node, sh::MESSAGE),
-                prefixes: parse_shacl_prefixes(graph, shape_node),
-                parameter_bindings: Vec::new(),
-            }));
-        }
+        let executable = match parse_executable(graph, shape_node)? {
+            Some(executable) => executable,
+            None => return Ok(constraints),
+        };
+        constraints.push(Constraint::Sparql(SparqlConstraint {
+            source_constraint: Some(shape_node),
+            source_constraint_component: None,
+            executable,
+            messages: get_all_string_values(graph, shape_node, sh::MESSAGE),
+            prefixes: parse_shacl_prefixes(graph, shape_node),
+            parameter_bindings: Vec::new(),
+        }));
     }
 
-    constraints
+    Ok(constraints)
 }
 
 fn is_constraint_component_instance<'a>(
@@ -128,8 +237,7 @@ fn parse_component_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
     is_property_shape: bool,
-    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
-) -> Vec<Constraint<'a>> {
+) -> Result<Vec<Constraint<'a>>, ShaclError> {
     let mut constraints = Vec::new();
 
     let mut validator_predicates = vec![sh::VALIDATOR];
@@ -161,10 +269,10 @@ fn parse_component_sparql_constraints<'a>(
                     continue;
                 };
 
-                let Some(executable) = parse_executable(graph, validator_node) else {
-                    continue;
+                let executable = match parse_executable(graph, validator_node)? {
+                    Some(executable) => executable,
+                    None => continue,
                 };
-
                 constraints.push(Constraint::Sparql(SparqlConstraint {
                     source_constraint: Some(validator_node),
                     source_constraint_component: Some(component),
@@ -177,22 +285,19 @@ fn parse_component_sparql_constraints<'a>(
         }
     }
 
-    constraints
+    Ok(constraints)
 }
 
 pub fn parse_sparql_constraints<'a>(
     graph: &'a Graph,
     shape_node: NamedOrBlankNodeRef<'a>,
     is_property_shape: bool,
-    sparql_graph_cache: Arc<DashMap<(GraphPattern, usize), String>>,
 ) -> Result<Vec<Constraint<'a>>, ShaclError> {
-    let mut constraints =
-        parse_direct_shape_sparql_constraints(graph, shape_node, Arc::clone(&sparql_graph_cache));
+    let mut constraints = parse_direct_shape_sparql_constraints(graph, shape_node)?;
     constraints.extend(parse_component_sparql_constraints(
         graph,
         shape_node,
         is_property_shape,
-        Arc::clone(&sparql_graph_cache),
-    ));
+    )?);
     Ok(constraints)
 }

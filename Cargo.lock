@@ -415,7 +415,6 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
- "rayon",
 ]
 
 [[package]]
@@ -1495,7 +1494,6 @@ name = "shacl-rust"
 version = "0.1.4"
 dependencies = [
  "criterion",
- "dashmap",
  "log",
  "oxigraph",
  "rayon",
