@@ -188,7 +188,7 @@ impl<'a> ValidationReport<'a> {
             graph.insert(&Triple::new(
                 result_subject.clone(),
                 NamedNode::from(sh::RESULT_MESSAGE),
-                Term::from(Literal::from(message.clone())),
+                Term::from(Literal::from(message.as_str())),
             ));
         }
 
@@ -197,7 +197,7 @@ impl<'a> ValidationReport<'a> {
                 graph.insert(&Triple::new(
                     result_subject.clone(),
                     NamedNode::from(sh::DETAIL),
-                    Term::from(Literal::from(trace_entry.clone())),
+                    Term::from(Literal::from(trace_entry.as_str())),
                 ));
             }
         }

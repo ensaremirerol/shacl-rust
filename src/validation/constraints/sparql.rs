@@ -78,7 +78,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
         for (prefix, namespace) in &self.prefixes {
             if let Ok(with_prefix) = evaluator
                 .clone()
-                .with_prefix(prefix.clone(), namespace.clone())
+                .with_prefix(prefix.as_str(), namespace.as_str())
             {
                 evaluator = with_prefix;
             }
@@ -121,7 +121,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
             }
 
             for (name, value) in &self.parameter_bindings {
-                bindings.push((name.clone(), format!("{}", value)));
+                bindings.push((name.to_string(), format!("{}", value)));
             }
 
             let bound_query = utils::inject_values_bindings(query_text, &bindings);
@@ -189,7 +189,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                         if self.messages.is_empty() {
                             builder = builder.message("SPARQL ASK constraint violation");
                         } else {
-                            builder = builder.messages(self.messages.clone());
+                            builder = builder.messages(self.messages.iter().cloned());
                         }
 
                         violations.push(shape.build_validation_result(builder));
@@ -267,7 +267,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                                 if self.messages.is_empty() {
                                     builder = builder.message("SPARQL ASK constraint violation");
                                 } else {
-                                    builder = builder.messages(self.messages.clone());
+                                    builder = builder.messages(self.messages.iter().cloned());
                                 }
 
                                 violations.push(shape.build_validation_result(builder));
