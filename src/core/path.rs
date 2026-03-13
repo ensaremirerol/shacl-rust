@@ -20,6 +20,7 @@ pub enum PathElement<'a> {
 /// use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef};
 ///
 /// let knows = NamedNodeRef::new("http://example.org/knows").unwrap();
+/// let works_for = NamedNodeRef::new("http://example.org/worksFor").unwrap();
 /// let path_loopback = Path::new()
 ///    .add_element(PathElement::Iri(knows))
 ///    .add_element(PathElement::Inverse(knows));
@@ -28,28 +29,47 @@ pub enum PathElement<'a> {
 /// let zero_or_more_path = Path::new()
 ///     .add_element(PathElement::ZeroOrMore(Box::new(PathElement::Iri(knows))));
 ///
+/// let complex_path = Path::new().add_element(PathElement::ZeroOrMore(Box::new(PathElement::Alternative(vec![
+///    PathElement::Iri(knows), PathElement::Iri(works_for)
+/// ]))));
+///
 /// let graph_string = r#"
 ///     @prefix ex: <http://example.org/> .
 ///     ex:Alice ex:knows ex:Bob .
 ///     ex:Bob ex:knows ex:Charlie .
 ///     ex:Charlie ex:knows ex:Alice .
+///     ex:Charlie ex:worksFor ex:Daniel .
+///     ex:Daniel ex:knows ex:David .
+///
 /// "#;
 /// let graph = read_graph_from_string(graph_string, "turtle").expect("Failed to read graph");
 /// let alice = NamedOrBlankNodeRef::from(NamedNodeRef::new("http://example.org/Alice").unwrap());
 ///
 /// let results_loopback = path_loopback.resolve_path_for_given_node(&graph, &alice);
+/// println!("Loopback results: {:?}", results_loopback);
 /// assert_eq!(results_loopback.len(), 1);
 /// assert_eq!(results_loopback[0], NamedNodeRef::new("http://example.org/Alice").unwrap().into());
 ///
 /// let results_single = path_single.resolve_path_for_given_node(&graph, &alice);
+/// println!("Single step results: {:?}", results_single);
 /// assert_eq!(results_single.len(), 1);
 /// assert_eq!(results_single[0], NamedNodeRef::new("http://example.org/Bob").unwrap().into());
 ///
 /// let results_zero_or_more = zero_or_more_path.resolve_path_for_given_node(&graph, &alice);
+/// println!("Zero or more results: {:?}", results_zero_or_more);
 /// assert_eq!(results_zero_or_more.len(), 3);
 /// assert!(results_zero_or_more.contains(&NamedNodeRef::new("http://example.org/Alice").unwrap().into()));
 /// assert!(results_zero_or_more.contains(&NamedNodeRef::new("http://example.org/Bob").unwrap().into()));
 /// assert!(results_zero_or_more.contains(&NamedNodeRef::new("http://example.org/Charlie").unwrap().into()));
+///
+/// let results_complex = complex_path.resolve_path_for_given_node(&graph, &alice);
+/// println!("Complex path results: {:?}", results_complex);
+/// assert_eq!(results_complex.len(), 5);
+/// assert!(results_complex.contains(&NamedNodeRef::new("http://example.org/Alice").unwrap().into()));
+/// assert!(results_complex.contains(&NamedNodeRef::new("http://example.org/Bob").unwrap().into()));
+/// assert!(results_complex.contains(&NamedNodeRef::new("http://example.org/Charlie").unwrap().into()));
+/// assert!(results_complex.contains(&NamedNodeRef::new("http://example.org/Daniel").unwrap().into()));
+/// assert!(results_complex.contains(&NamedNodeRef::new("http://example.org/David").unwrap().into()));
 /// ```
 ///
 ///

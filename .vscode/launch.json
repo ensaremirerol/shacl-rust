@@ -6,10 +6,13 @@
             "request": "launch",
             "name": "Debug with args",
             "cargo": {
+                "env": {
+                    "RUST_LOG": "debug"
+                },
                 "args": [
                     "build",
-                    "--bin=shacl-validator",
-                    "--package=shacl-rust"
+                    "-p",
+                    "shacl-cli"
                 ],
                 "filter": {
                     "name": "shacl-validator",

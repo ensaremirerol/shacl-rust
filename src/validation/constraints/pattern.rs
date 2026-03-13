@@ -42,11 +42,13 @@ impl<'a> Validate<'a> for PatternConstraint {
         };
 
         for &value_node in value_nodes {
-            let TermRef::Literal(lit) = value_node else {
-                continue;
+            let value_str = match value_node {
+                TermRef::Literal(lit) => lit.value(),
+                TermRef::NamedNode(nn) => nn.as_str(),
+                TermRef::BlankNode(_) => continue, // Skip blank nodes
             };
 
-            if !re.is_match(lit.value()) {
+            if !re.is_match(value_str) {
                 let builder = ViolationBuilder::new(focus_node)
                     .value(value_node)
                     .message(format!("Value does not match pattern: {}", self.pattern))
