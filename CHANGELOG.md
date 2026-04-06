@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.4...shacl-rust-v0.1.5) (2026-04-06)
+
+
+### Bug Fixes
+
+* pattern contraint was only checking literals ([a67a3d5](https://github.com/ensaremirerol/shacl-rust/commit/a67a3d524f1c7193aaa626247c2d38217694a043))
+
 ## [0.1.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.3...shacl-rust-v0.1.4) (2026-02-25)
 
 
