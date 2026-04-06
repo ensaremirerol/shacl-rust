@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.1.4...shacl-mcp-v0.1.5) (2026-04-06)
+
+
+### Miscellaneous
+
+* release main ([fc5eaa5](https://github.com/ensaremirerol/shacl-rust/commit/fc5eaa5e4eabe8738b8c2cce0162c9742293f723))
+
 ## [0.1.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.1.3...shacl-mcp-v0.1.4) (2026-02-25)
 
 
