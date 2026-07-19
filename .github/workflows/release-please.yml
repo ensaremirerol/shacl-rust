@@ -42,17 +42,41 @@ jobs:
               uses: actions-rust-lang/setup-rust-toolchain@v1
               with:
                   toolchain: stable
-              if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+
+            # --allow-dirty: release-please's own Cargo.lock regeneration isn't always
+            # byte-identical to what `cargo publish`'s fresh dependency resolution
+            # produces at publish time, which cargo otherwise treats as a dirty
+            # working tree and refuses to package. We've already verified the release
+            # commit itself passes fmt/clippy/tests, so this is safe here.
+            #
+            # No `|| echo` masking: a real failure must fail the job loudly. The only
+            # case we treat as success-not-failure is "this exact version is already
+            # published" (idempotent re-runs after a partial failure), detected from
+            # cargo's own error text rather than swallowing every possible error.
             - name: Publish shacl-rust (main crate)
               run: |
-                  cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+                  set -o pipefail
+                  if ! cargo publish --package shacl-rust --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish-shacl-rust.log; then
+                      grep -qi "already exists\|already uploaded" /tmp/publish-shacl-rust.log || exit 1
+                      echo "shacl-rust: version already published, treating as success"
+                  fi
 
             # Wait for crates.io index to update
             - name: Wait for crates.io index update
               run: sleep 45
 
             - name: Publish shacl-cli
-              run: cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+              run: |
+                  set -o pipefail
+                  if ! cargo publish --package shacl-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish-shacl-cli.log; then
+                      grep -qi "already exists\|already uploaded" /tmp/publish-shacl-cli.log || exit 1
+                      echo "shacl-cli: version already published, treating as success"
+                  fi
 
             - name: Publish shacl-mcp
-              run: cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || echo "Already published or failed"
+              run: |
+                  set -o pipefail
+                  if ! cargo publish --package shacl-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish-shacl-mcp.log; then
+                      grep -qi "already exists\|already uploaded" /tmp/publish-shacl-mcp.log || exit 1
+                      echo "shacl-mcp: version already published, treating as success"
+                  fi
