@@ -23,9 +23,6 @@ pub fn is_subclass_of(
                 _ => None,
             }));
         }
-        if to_visit.contains(&class) {
-            return true;
-        }
     }
     false
 }
@@ -96,9 +93,6 @@ pub fn is_subproperty_of<'a>(
                 TermRef::BlankNode(bn) => Some(NamedOrBlankNodeRef::from(bn)),
                 _ => None,
             }));
-        }
-        if to_visit.contains(&property) {
-            return true;
         }
     }
     false
