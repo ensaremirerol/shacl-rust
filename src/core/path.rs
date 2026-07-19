@@ -141,19 +141,15 @@ impl<'a> Path<'a> {
         for subject in subjects {
             match element {
                 PathElement::Iri(predicate) => {
-                    for triple in graph {
-                        if triple.subject == subject && triple.predicate == (*predicate) {
-                            results.push(triple.object);
-                        }
-                    }
+                    results.extend(graph.objects_for_subject_predicate(subject, *predicate));
                 }
                 PathElement::Inverse(predicate) => {
                     // Inverse property: find all subjects where node is object
-                    for triple in graph {
-                        if triple.object == subject.into() && triple.predicate == (*predicate) {
-                            results.push(triple.subject.into());
-                        }
-                    }
+                    results.extend(
+                        graph
+                            .subjects_for_predicate_object(*predicate, TermRef::from(subject))
+                            .map(TermRef::from),
+                    );
                 }
                 PathElement::ZeroOrMore(path_element) => {
                     // Transitive closure including the starting node (Kleene star)
