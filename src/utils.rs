@@ -317,32 +317,6 @@ pub fn parse_shacl_prefixes<'a>(
     prefixes
 }
 
-pub fn inject_values_bindings(query: &str, bindings: &[(String, String)]) -> String {
-    if bindings.is_empty() {
-        return query.to_string();
-    }
-
-    let mut values_block = String::new();
-    for (var, value) in bindings {
-        values_block.push_str(&format!("\nVALUES ${} {{ {} }}", var, value));
-    }
-
-    // The `WHERE` keyword is optional in SPARQL for both SELECT and ASK, so the query's
-    // group graph pattern may start directly at its first `{` (e.g. `ASK { ... }`). That
-    // opening brace is always the right injection point whether or not `WHERE` is present,
-    // since SPARQL only uses `{`/`}` for graph patterns, never in a SELECT variable list.
-    if let Some(rel_brace) = query.find('{') {
-        let insert_at = rel_brace + 1;
-        let mut out = String::with_capacity(query.len() + values_block.len() + 1);
-        out.push_str(&query[..insert_at]);
-        out.push_str(&values_block);
-        out.push_str(&query[insert_at..]);
-        return out;
-    }
-
-    format!("{}\n{}", values_block, query)
-}
-
 pub fn rewrite_this_binding_query(query: &str, this_term: &str) -> String {
     let normalized = query.replace("$this", "?this");
     let where_re = Regex::new(r"(?i)WHERE\s*\{").unwrap();
@@ -443,35 +417,3 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn inject_values_bindings_handles_where_less_ask() {
-        let query = "ASK {\n    FILTER ($value != $requiredParam) .\n}";
-        let bound = inject_values_bindings(
-            query,
-            &[
-                ("value".to_string(), "\"One\"".to_string()),
-                ("requiredParam".to_string(), "\"One\"".to_string()),
-            ],
-        );
-
-        assert!(
-            bound.starts_with("ASK {\nVALUES $value"),
-            "VALUES must be injected right after the opening brace, got: {bound}"
-        );
-        assert!(bound.contains("VALUES $requiredParam"));
-        // The query must remain parseable SPARQL: ASK still comes before the pattern block.
-        assert!(bound.trim_start().starts_with("ASK"));
-    }
-
-    #[test]
-    fn inject_values_bindings_handles_explicit_where() {
-        let query = "SELECT ?x WHERE {\n  ?x a ?type .\n}";
-        let bound = inject_values_bindings(query, &[("this".to_string(), "<urn:a>".to_string())]);
-
-        assert!(bound.contains("WHERE {\nVALUES $this"));
-    }
-}
