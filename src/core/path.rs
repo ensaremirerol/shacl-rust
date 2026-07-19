@@ -114,100 +114,93 @@ impl<'a> Path<'a> {
         debug!("Resolving path for node {:?} with path: {}", node, self);
         let mut current_nodes: Vec<TermRef<'a>> = vec![(*node).into()];
 
-        // Apply each path element in sequence
+        // Apply each path element in sequence, deduplicating the frontier per step.
         for element in &self.path {
-            current_nodes = self.resolve_element(graph, element, &current_nodes);
+            let mut next_nodes: Vec<TermRef<'a>> = Vec::new();
+            let mut seen: HashSet<TermRef<'a>> = HashSet::new();
+            for current in &current_nodes {
+                let subject = match current {
+                    TermRef::NamedNode(n) => NamedOrBlankNodeRef::from(*n),
+                    TermRef::BlankNode(b) => NamedOrBlankNodeRef::from(*b),
+                    TermRef::Literal(_) => continue,
+                };
+                Self::expand(graph, element, subject, &mut |term| {
+                    if seen.insert(term) {
+                        next_nodes.push(term);
+                    }
+                });
+            }
+            current_nodes = next_nodes;
         }
         debug!("Resolved nodes: {:?}", current_nodes);
         current_nodes
     }
 
-    /// Resolves a single path element for a set of nodes
-    fn resolve_element(
-        &self,
+    /// Emits every node reachable from `subject` via `element`. May emit
+    /// duplicates; callers deduplicate.
+    fn expand(
         graph: &'a oxigraph::model::Graph,
         element: &PathElement<'a>,
-        nodes: &[TermRef<'a>],
-    ) -> Vec<TermRef<'a>> {
-        let mut results = Vec::new();
-        let subjects: Vec<NamedOrBlankNodeRef<'a>> = nodes
-            .iter()
-            .filter_map(|node| match node {
-                TermRef::NamedNode(n) => Some(NamedOrBlankNodeRef::from(*n)),
-                TermRef::BlankNode(b) => Some(NamedOrBlankNodeRef::from(*b)),
-                TermRef::Literal(_) => None,
-            })
-            .collect();
-        for subject in subjects {
-            match element {
-                PathElement::Iri(predicate) => {
-                    results.extend(graph.objects_for_subject_predicate(subject, *predicate));
+        subject: NamedOrBlankNodeRef<'a>,
+        emit: &mut dyn FnMut(TermRef<'a>),
+    ) {
+        match element {
+            PathElement::Iri(predicate) => {
+                for object in graph.objects_for_subject_predicate(subject, *predicate) {
+                    emit(object);
                 }
-                PathElement::Inverse(predicate) => {
-                    // Inverse property: find all subjects where node is object
-                    results.extend(
-                        graph
-                            .subjects_for_predicate_object(*predicate, TermRef::from(subject))
-                            .map(TermRef::from),
-                    );
+            }
+            PathElement::Inverse(predicate) => {
+                for s in graph.subjects_for_predicate_object(*predicate, TermRef::from(subject)) {
+                    emit(TermRef::from(s));
                 }
-                PathElement::ZeroOrMore(path_element) => {
-                    // Transitive closure including the starting node (Kleene star)
-                    results.push(subject.into());
-                    let mut visited: HashSet<TermRef<'a>> = HashSet::new();
-                    visited.insert(subject.into());
-                    let mut to_visit: Vec<TermRef<'a>> = vec![subject.into()];
+            }
+            PathElement::ZeroOrMore(inner) => {
+                // Kleene star: include the starting node itself.
+                emit(subject.into());
+                Self::expand_transitive(graph, inner, subject, emit);
+            }
+            PathElement::OneOrMore(inner) => {
+                Self::expand_transitive(graph, inner, subject, emit);
+            }
+            PathElement::ZeroOrOne(inner) => {
+                emit(subject.into());
+                Self::expand(graph, inner, subject, emit);
+            }
+            PathElement::Alternative(alternatives) => {
+                for alt in alternatives {
+                    Self::expand(graph, alt, subject, emit);
+                }
+            }
+        }
+    }
 
-                    while let Some(current) = to_visit.pop() {
-                        // Get next nodes by applying the path element
-                        let next_nodes = self.resolve_element(graph, path_element, &[current]);
-                        for next in next_nodes {
-                            if visited.insert(next) {
-                                results.push(next);
-                                to_visit.push(next);
-                            }
-                        }
-                    }
-                }
-                PathElement::OneOrMore(path_element) => {
-                    // Transitive closure, not including the starting node (Kleene plus)
-                    let mut visited: HashSet<TermRef<'a>> = HashSet::new();
-                    visited.insert(subject.into());
-                    let mut to_visit: Vec<TermRef<'a>> = vec![subject.into()];
+    /// Transitive closure of `element` starting at `start`, excluding `start`
+    /// itself. Each reachable node is emitted exactly once.
+    fn expand_transitive(
+        graph: &'a oxigraph::model::Graph,
+        element: &PathElement<'a>,
+        start: NamedOrBlankNodeRef<'a>,
+        emit: &mut dyn FnMut(TermRef<'a>),
+    ) {
+        let mut visited: HashSet<TermRef<'a>> = HashSet::new();
+        visited.insert(start.into());
+        let mut to_visit: Vec<NamedOrBlankNodeRef<'a>> = vec![start];
 
-                    while let Some(current) = to_visit.pop() {
-                        // Get next nodes by applying the path element
-                        let next_nodes = self.resolve_element(graph, path_element, &[current]);
-                        for next in next_nodes {
-                            if visited.insert(next) {
-                                results.push(next);
-                                to_visit.push(next);
-                            }
-                        }
-                    }
-                }
-                PathElement::ZeroOrOne(path_element) => {
-                    // Optional path: include the node itself and direct neighbors
-                    results.push(subject.into());
-
-                    let next_nodes = self.resolve_element(graph, path_element, &[subject.into()]);
-                    results.extend(next_nodes);
-                }
-                PathElement::Alternative(alternatives) => {
-                    // Apply all alternatives and merge results
-                    for alt in alternatives {
-                        results.extend(self.resolve_element(graph, alt, &[subject.into()]));
+        while let Some(current) = to_visit.pop() {
+            let mut found: Vec<TermRef<'a>> = Vec::new();
+            Self::expand(graph, element, current, &mut |term| found.push(term));
+            for next in found {
+                if visited.insert(next) {
+                    emit(next);
+                    match next {
+                        TermRef::NamedNode(n) => to_visit.push(NamedOrBlankNodeRef::from(n)),
+                        TermRef::BlankNode(b) => to_visit.push(NamedOrBlankNodeRef::from(b)),
+                        TermRef::Literal(_) => {}
                     }
                 }
             }
         }
-
-        // Remove duplicates
-        let mut unique_results = HashSet::new();
-        results
-            .into_iter()
-            .filter(|r| unique_results.insert(*r))
-            .collect()
     }
 }
 
