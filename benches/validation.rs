@@ -51,6 +51,39 @@ ex:PersonShape a sh:NodeShape ;
     ] .
 "#;
 
+const SPARQL_SHAPES: &str = r#"
+@prefix ex: <http://example.org/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+ex:PersonSparqlShape a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:sparql [
+        sh:message "Age must not be negative" ;
+        sh:select """SELECT $this WHERE { $this <http://example.org/age> ?age . FILTER (?age < 0) }""" ;
+    ] .
+"#;
+
+fn bench_sparql_validation(c: &mut Criterion) {
+    for &size in &[100usize, 1000] {
+        let data_ttl = generate_data(size);
+        let data_graph = read_graph_from_string(&data_ttl, "turtle").unwrap();
+        let shapes_graph = read_graph_from_string(SPARQL_SHAPES, "turtle").unwrap();
+
+        let shapes = parse_shapes(&shapes_graph).unwrap();
+        let dataset = validation::dataset::ValidationDataset::from_graphs(
+            data_graph.clone(),
+            shapes_graph.clone(),
+        )
+        .unwrap();
+        c.bench_function(&format!("sparql_validate_{size}"), |b| {
+            b.iter(|| {
+                let report = validation::validate(&dataset, &shapes);
+                black_box(report.get_results().len())
+            })
+        });
+    }
+}
+
 fn bench_validation(c: &mut Criterion) {
     for &size in &[100usize, 1000] {
         let data_ttl = generate_data(size);
@@ -87,5 +120,5 @@ fn bench_validation(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_validation);
+criterion_group!(benches, bench_validation, bench_sparql_validation);
 criterion_main!(benches);

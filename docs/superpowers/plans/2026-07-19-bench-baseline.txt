@@ -15,3 +15,10 @@ validate_only_1000   1.0027 ms   (~12.5x faster)
 
 Main contributors: lazy SPARQL store (full_pipeline), precompiled sh:pattern
 regex + indexed sh:class lookup (validate_only).
+
+=== sh:sparql prepared-query rewrite (follow-up) ===
+sparql_validate_100    before 4.5727 ms   after 752.45 us   (~6.1x faster)
+sparql_validate_1000   before 36.740 ms   after 6.2062 ms   (~5.9x faster)
+
+Query is parsed once per constraint call and per-node terms are pre-bound
+via oxigraph variable substitution instead of textual VALUES injection.

@@ -1,6 +1,6 @@
 use oxigraph::{
-    model::{NamedOrBlankNodeRef, TermRef},
-    sparql::{QueryResults, SparqlEvaluator},
+    model::{NamedNode, NamedOrBlankNodeRef, Term, TermRef, Variable},
+    sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator},
 };
 
 use crate::{
@@ -101,6 +101,8 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
 
         let query_text = self.executable.query();
 
+        // String forms of the bindings, kept only for message templates
+        // ({$this}, {?value}, ...) rendered on violations.
         let mut base_bindings: Vec<(String, String)> = Vec::new();
         base_bindings.push(("this".to_string(), format!("{}", focus_node)));
         base_bindings.push((
@@ -109,15 +111,54 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
         ));
         base_bindings.push(("currentShape".to_string(), format!("{}", shape.node)));
 
+        // The query is parsed once per call; per-target terms are pre-bound via
+        // variable substitution, so the query text never changes.
+        let prepared_base = match evaluator.clone().parse_query(query_text) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                for maybe_value in run_once_targets {
+                    let mut builder = ViolationBuilder::new(focus_node)
+                        .message(format!("SPARQL parse error: {}", error))
+                        .component(constraint_component(self))
+                        .detail(format!("SPARQL query: {}", query_text.replace('\n', " ")));
+                    if let Some(value) = maybe_value {
+                        builder = builder.value(value);
+                    }
+                    violations.push(shape.build_validation_result(builder));
+                }
+                return Ok(violations);
+            }
+        };
+
+        let mut prepared_base = prepared_base
+            .substitute_variable(Variable::new_unchecked("this"), focus_node.into_owned())
+            .substitute_variable(
+                Variable::new_unchecked("shapesGraph"),
+                NamedNode::new_unchecked(dataset::SHAPES_GRAPH_IRI),
+            )
+            .substitute_variable(
+                Variable::new_unchecked("currentShape"),
+                Term::from(shape.node.into_owned()),
+            );
+
         if let Some(path) = path {
             if let Some(predicate) = utils::extract_direct_predicates(path).into_iter().next() {
                 base_bindings.push(("PATH".to_string(), format!("{}", predicate)));
+                prepared_base = prepared_base
+                    .substitute_variable(Variable::new_unchecked("PATH"), predicate.into_owned());
             }
         }
 
         for (name, value) in &self.parameter_bindings {
             base_bindings.push((name.to_string(), format!("{}", value)));
+            if let Ok(var) = Variable::new(name.as_str()) {
+                prepared_base = prepared_base.substitute_variable(var, value.into_owned());
+            }
         }
+
+        // The $this fallback query is also constant per call; parsed lazily at
+        // most once, only if a target actually needs it.
+        let mut fallback: Option<Option<(PreparedSparqlQuery, String)>> = None;
 
         for maybe_value in run_once_targets {
             let mut bindings = base_bindings.clone();
@@ -126,22 +167,11 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                 bindings.push(("value".to_string(), format!("{}", value)));
             }
 
-            let bound_query = utils::inject_values_bindings(query_text, &bindings);
-
-            let prepared = match evaluator.clone().parse_query(&bound_query) {
-                Ok(prepared) => prepared,
-                Err(error) => {
-                    let mut builder = ViolationBuilder::new(focus_node)
-                        .message(format!("SPARQL parse error: {}", error))
-                        .component(constraint_component(self))
-                        .detail(format!("SPARQL query: {}", bound_query.replace('\n', " ")));
-                    if let Some(value) = maybe_value {
-                        builder = builder.value(value);
-                    }
-                    violations.push(shape.build_validation_result(builder));
-                    continue;
-                }
-            };
+            let mut prepared = prepared_base.clone();
+            if let Some(value) = maybe_value {
+                prepared = prepared
+                    .substitute_variable(Variable::new_unchecked("value"), value.into_owned());
+            }
 
             let results = prepared.on_store(store.as_ref()).execute();
             let violations_before = violations.len();
@@ -159,7 +189,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
 
                         let mut builder = ViolationBuilder::new(focus_node)
                             .component(constraint_component(self))
-                            .detail(format!("SPARQL SELECT: {}", bound_query.replace('\n', " ")));
+                            .detail(format!("SPARQL SELECT: {}", query_text.replace('\n', " ")));
 
                         if let Some(value) = maybe_value {
                             builder = builder.value(value);
@@ -182,7 +212,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                     if !result {
                         let mut builder = ViolationBuilder::new(focus_node)
                             .component(constraint_component(self))
-                            .detail(format!("SPARQL ASK: {}", bound_query.replace('\n', " ")));
+                            .detail(format!("SPARQL ASK: {}", query_text.replace('\n', " ")));
 
                         if let Some(value) = maybe_value {
                             builder = builder.value(value);
@@ -202,7 +232,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                     let mut builder = ViolationBuilder::new(focus_node)
                         .component(constraint_component(self))
                         .message(format!("SPARQL execution error: {}", error))
-                        .detail(format!("SPARQL query: {}", bound_query.replace('\n', " ")));
+                        .detail(format!("SPARQL query: {}", query_text.replace('\n', " ")));
                     if let Some(value) = maybe_value {
                         builder = builder.value(value);
                     }
@@ -212,11 +242,18 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
 
             let has_this_var = query_text.contains("$this") || query_text.contains("?this");
             if violations.len() == violations_before && has_this_var {
-                let rewritten_query =
-                    utils::rewrite_this_binding_query(query_text, &format!("{}", focus_node));
-                let fallback_prepared = evaluator.clone().parse_query(&rewritten_query);
-                if let Ok(fallback_prepared) = fallback_prepared {
-                    let fallback_results = fallback_prepared.on_store(store.as_ref()).execute();
+                let fallback = fallback.get_or_insert_with(|| {
+                    let rewritten_query =
+                        utils::rewrite_this_binding_query(query_text, &format!("{}", focus_node));
+                    evaluator
+                        .clone()
+                        .parse_query(&rewritten_query)
+                        .ok()
+                        .map(|prepared| (prepared, rewritten_query))
+                });
+                if let Some((fallback_prepared, rewritten_query)) = fallback {
+                    let fallback_results =
+                        fallback_prepared.clone().on_store(store.as_ref()).execute();
                     match (&self.executable, fallback_results) {
                         (SparqlExecutable::Select(_), Ok(QueryResults::Solutions(solutions))) => {
                             for solution_result in solutions {
