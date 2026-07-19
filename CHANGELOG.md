@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.6...shacl-rust-v0.1.7) (2026-07-19)
+
+
+### Bug Fixes
+
+* **ci:** make publish-crates fail loudly and tolerate lockfile drift ([dc4ed9f](https://github.com/ensaremirerol/shacl-rust/commit/dc4ed9f8d1565e90bbb147b95cfb2519a1126b7d))
+* stop nested-SELECT detection from false-flagging plain ASK queries ([910e1b6](https://github.com/ensaremirerol/shacl-rust/commit/910e1b6f2ad05f3246f44d6944480f15378f8105))
+
 ## [0.1.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.5...shacl-rust-v0.1.6) (2026-07-19)
 
 
