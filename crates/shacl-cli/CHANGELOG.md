@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.0...shacl-cli-v0.2.1) (2026-07-19)
+
+
+### Performance Improvements
+
+* **shacl-cli:** skip graph re-merge for single data file ([6c0c836](https://github.com/ensaremirerol/shacl-rust/commit/6c0c8368b1d6292e240f9f8259738a9adf5fb3ac))
+
 ## [0.2.0](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.1.7...shacl-cli-v0.2.0) (2026-07-19)
 
 
