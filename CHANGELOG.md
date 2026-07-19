@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.5...shacl-rust-v0.1.6) (2026-07-19)
+
+
+### Bug Fixes
+
+* avoid duplicate logger init and accept turtle as output-format alias ([ff37d6a](https://github.com/ensaremirerol/shacl-rust/commit/ff37d6a2b37bc4dbf7b44c75c1f0d0fab86bb73c))
+* correctly inject SPARQL VALUES bindings for WHERE-less ASK/SELECT queries ([50cd557](https://github.com/ensaremirerol/shacl-rust/commit/50cd5573e7e4900a891bebaacb3d4b00bd967153))
+* disable oxigraph default features in shacl-cli and shacl-mcp ([9c8ef07](https://github.com/ensaremirerol/shacl-rust/commit/9c8ef07b31f7ab56a6e666b526a6b67c62151e65))
+* link sh:ValidationReport to results via sh:result instead of sh:detail ([127ad3a](https://github.com/ensaremirerol/shacl-rust/commit/127ad3a35494c5d0dc3bc6d2a9e25d25ee5b905d))
+
+
+### Performance Improvements
+
+* resolve property paths via indexed graph lookups instead of full scans ([36c3f9d](https://github.com/ensaremirerol/shacl-rust/commit/36c3f9de32d1ec3980d9d8ea170fe00548e2217c))
+
+
+### Miscellaneous
+
+* account for shacl-cli/shacl-mcp's already-bumped 0.1.5 in release-please manifest ([2cd2d3d](https://github.com/ensaremirerol/shacl-rust/commit/2cd2d3d701f07fb8cfdc3c3f68e4bb0b2e1e9701))
+
 ## [0.1.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.4...shacl-rust-v0.1.5) (2026-04-06)
 
 
