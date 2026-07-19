@@ -301,22 +301,32 @@ fn validate_command(
             })
             .collect();
 
-    let mut data_graph = oxigraph::model::Graph::new();
+    // Merging rebuilds the graph's indexes, which dominates load time and
+    // doubles peak memory on large graphs — reuse the parsed graph when there
+    // is nothing to merge.
+    let mut merged: Option<oxigraph::model::Graph> = None;
     for data_graph_result in data_graphs_results {
         let (data_file, graph) = data_graph_result?;
-        let before_len = data_graph.len();
-        data_graph.extend(graph.iter().map(oxigraph::model::Triple::from));
-        info!(
-            "Merged data graph {} ({} triples, total now {})",
-            data_file.display(),
-            graph.len(),
-            data_graph.len()
-        );
-        debug!(
-            "Data merge added {} unique triples",
-            data_graph.len().saturating_sub(before_len)
-        );
+        let triples = graph.len();
+        match &mut merged {
+            None => merged = Some(graph),
+            Some(data_graph) => {
+                let before_len = data_graph.len();
+                data_graph.extend(graph.iter());
+                info!(
+                    "Merged data graph {} ({} triples, total now {})",
+                    data_file.display(),
+                    triples,
+                    data_graph.len()
+                );
+                debug!(
+                    "Data merge added {} unique triples",
+                    data_graph.len().saturating_sub(before_len)
+                );
+            }
+        }
     }
+    let data_graph = merged.unwrap_or_default();
 
     debug!(
         "Reading shapes graph from {} with format {}",
