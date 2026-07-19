@@ -48,15 +48,26 @@ fn parse_executable<'a>(
     Ok(Some(sparql_executable))
 }
 
+/// Walks a query's algebra looking for constructs SHACL pre-binding can't support.
+///
+/// `at_top` tracks whether we're still within the chain of modifiers wrapping the
+/// *outermost* query itself (its own Project/Filter/OrderBy/etc., however many layers
+/// that happens to be) versus having crossed into a branch of a real combinator
+/// (Join/Union/LeftJoin/Lateral) where a genuinely nested sub-SELECT could live. This
+/// avoids hardcoding "how many Project layers does a top-level ASK vs. SELECT have" --
+/// that's an internal representation detail of the SPARQL algebra library and not
+/// stable across its versions (e.g. spargebra 0.4.6 started wrapping ASK's pattern in
+/// an explicit `Project { variables: [], .. }`, where 0.4.5 didn't wrap it at all;
+/// counting a fixed "remaining projects" budget per query type broke against that).
 fn unsupported_in_pattern(
     pattern: &GraphPattern,
-    remaining_select_projects: usize,
+    at_top: bool,
     required_prebound_vars: &HashSet<Variable>,
 ) -> Option<&'static str> {
     match pattern {
         GraphPattern::Minus { .. } => Some("MINUS is not supported for SHACL pre-binding"),
         GraphPattern::Service { .. } => Some("SERVICE is not supported for SHACL pre-binding"),
-        GraphPattern::Project { variables, inner } if remaining_select_projects == 0 => {
+        GraphPattern::Project { variables, inner } if !at_top => {
             // Nested SELECT is only allowed if it explicitly projects all pre-bound variables
             let projected_vars: HashSet<_> = variables.iter().cloned().collect();
             if !required_prebound_vars.is_subset(&projected_vars) {
@@ -64,24 +75,12 @@ fn unsupported_in_pattern(
                     "Nested SELECT must explicitly project all pre-bound variables (e.g., $this)",
                 );
             }
-            unsupported_in_pattern(inner, 0, required_prebound_vars)
+            unsupported_in_pattern(inner, false, required_prebound_vars)
         }
-        GraphPattern::Join { left, right } | GraphPattern::Union { left, right } => {
-            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
-                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
-            )
-        }
-        GraphPattern::LeftJoin { left, right, .. } => {
-            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
-                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
-            )
-        }
-        GraphPattern::Lateral { left, right } => {
-            unsupported_in_pattern(left, remaining_select_projects, required_prebound_vars).or_else(
-                || unsupported_in_pattern(right, remaining_select_projects, required_prebound_vars),
-            )
-        }
-        GraphPattern::Filter { inner, .. }
+        // Still within the outer query's own modifier chain -- transparent regardless
+        // of how many layers deep, since none of these introduce a new sub-query scope.
+        GraphPattern::Project { inner, .. }
+        | GraphPattern::Filter { inner, .. }
         | GraphPattern::Graph { inner, .. }
         | GraphPattern::Extend { inner, .. }
         | GraphPattern::OrderBy { inner, .. }
@@ -89,13 +88,22 @@ fn unsupported_in_pattern(
         | GraphPattern::Reduced { inner }
         | GraphPattern::Slice { inner, .. }
         | GraphPattern::Group { inner, .. } => {
-            unsupported_in_pattern(inner, remaining_select_projects, required_prebound_vars)
+            unsupported_in_pattern(inner, at_top, required_prebound_vars)
         }
-        GraphPattern::Project { inner, .. } => unsupported_in_pattern(
-            inner,
-            remaining_select_projects.saturating_sub(1),
-            required_prebound_vars,
-        ),
+        // A real combination point: either branch from here on is a genuinely separate
+        // (possibly nested-SELECT) sub-pattern, not part of the outer query's own chain.
+        GraphPattern::Join { left, right } | GraphPattern::Union { left, right } => {
+            unsupported_in_pattern(left, false, required_prebound_vars)
+                .or_else(|| unsupported_in_pattern(right, false, required_prebound_vars))
+        }
+        GraphPattern::LeftJoin { left, right, .. } => {
+            unsupported_in_pattern(left, false, required_prebound_vars)
+                .or_else(|| unsupported_in_pattern(right, false, required_prebound_vars))
+        }
+        GraphPattern::Lateral { left, right } => {
+            unsupported_in_pattern(left, false, required_prebound_vars)
+                .or_else(|| unsupported_in_pattern(right, false, required_prebound_vars))
+        }
         GraphPattern::Bgp { .. } | GraphPattern::Path { .. } | GraphPattern::Values { .. } => None,
     }
 }
@@ -119,25 +127,19 @@ fn unsupported_prebinding_construct(
         Err(_) => return None,
     };
 
-    let (pattern, remaining_select_projects, prebound_vars) = match parsed {
-        Query::Select { pattern, .. } => {
-            // For SELECT queries, $this is always pre-bound
+    let (pattern, prebound_vars) = match parsed {
+        Query::Select { pattern, .. } | Query::Ask { pattern, .. } => {
+            // $this is always pre-bound, for both SELECT and ASK queries.
             let mut vars = HashSet::new();
             vars.insert(Variable::new_unchecked("this"));
-            (pattern, 1, vars)
-        }
-        Query::Ask { pattern, .. } => {
-            // For ASK queries, $this is pre-bound
-            let mut vars = HashSet::new();
-            vars.insert(Variable::new_unchecked("this"));
-            (pattern, 0, vars)
+            (pattern, vars)
         }
         Query::Construct { pattern, .. } | Query::Describe { pattern, .. } => {
-            (pattern, 0, HashSet::new())
+            (pattern, HashSet::new())
         }
     };
 
-    unsupported_in_pattern(&pattern, remaining_select_projects, &prebound_vars)
+    unsupported_in_pattern(&pattern, true, &prebound_vars)
 }
 
 fn parse_direct_shape_sparql_constraints<'a>(
@@ -300,4 +302,80 @@ pub fn parse_sparql_constraints<'a>(
         is_property_shape,
     )?);
     Ok(constraints)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_ask_filter_is_not_flagged_as_unsupported() {
+        // Regression test: spargebra >=0.4.6 wraps an ASK query's pattern in a
+        // top-level `Project { variables: [], .. }` (0.4.5 didn't wrap it at all),
+        // which used to false-positive here because the detection assumed ASK
+        // queries could never have a top-level Project node.
+        let query = r#"ASK {
+            FILTER ($value != $requiredParam) .
+        }"#;
+        assert_eq!(unsupported_prebinding_construct(query, &[]), None);
+    }
+
+    #[test]
+    fn plain_select_star_is_not_flagged_as_unsupported() {
+        let query = "SELECT * WHERE { $this ?p ?o . }";
+        assert_eq!(unsupported_prebinding_construct(query, &[]), None);
+    }
+
+    #[test]
+    fn nested_select_not_reprojecting_this_is_flagged() {
+        let query = r#"
+            SELECT $this
+            WHERE {
+                $this ?x ?any .
+                {
+                    SELECT ?other ?b
+                    WHERE {
+                        ?other ?b ?c .
+                    }
+                }
+            }"#;
+        assert_eq!(
+            unsupported_prebinding_construct(query, &[]),
+            Some("Nested SELECT must explicitly project all pre-bound variables (e.g., $this)")
+        );
+    }
+
+    #[test]
+    fn nested_select_reprojecting_this_is_allowed() {
+        let query = r#"
+            SELECT $this
+            WHERE {
+                $this ?x ?any .
+                {
+                    SELECT $this ?b
+                    WHERE {
+                        $this ?b ?c .
+                    }
+                }
+            }"#;
+        assert_eq!(unsupported_prebinding_construct(query, &[]), None);
+    }
+
+    #[test]
+    fn minus_is_flagged() {
+        let query = "SELECT $this WHERE { $this ?p ?o . MINUS { $this a <urn:x> } }";
+        assert_eq!(
+            unsupported_prebinding_construct(query, &[]),
+            Some("MINUS is not supported for SHACL pre-binding")
+        );
+    }
+
+    #[test]
+    fn service_is_flagged() {
+        let query = "SELECT $this WHERE { SERVICE <http://example.org/sparql> { $this ?p ?o } }";
+        assert_eq!(
+            unsupported_prebinding_construct(query, &[]),
+            Some("SERVICE is not supported for SHACL pre-binding")
+        );
+    }
 }
