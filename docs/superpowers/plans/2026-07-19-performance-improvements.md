@@ -1,6 +1,6 @@
 # shacl-rust Performance Improvements Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **STATUS: COMPLETED 2026-07-19.** All 9 tasks were implemented, verified (full test suite incl. 120/120 W3C conformance, clippy, wasm), and committed directly in-session — no separate executor needed. Benchmark results and follow-up work (sh:sparql prepared queries, comparison pre-parsing, sh:class subclass fix) are recorded in `2026-07-19-bench-baseline.txt`. The "Out of scope" items at the bottom were either since implemented (1) or investigated and skipped with rationale in the same file (2–4); item 5 was implemented as a correctness fix, and 6–7 were implemented in the follow-up round.
 
 **Goal:** Remove the biggest measured hot spots in the shacl-rust SHACL validator: eager oxigraph store construction, per-node regex compilation, redundant O(n²) scans, per-value linear lookups, per-target SPARQL binding rebuilds, and allocation churn in property-path evaluation.
 
@@ -32,7 +32,7 @@ Tasks 1–2 set up measurement. Tasks 3–9 are the fixes, ordered easiest-first
 - Consumes: nothing
 - Produces: nothing (build configuration only)
 
-- [ ] **Step 1: Add the profile section**
+- [x] **Step 1: Add the profile section**
 
 In the root `Cargo.toml`, add this block after the `[workspace]` section (after the line `members = ["crates/shacl-cli", "crates/shacl-wasm", "crates/shacl-mcp"]`):
 
@@ -42,12 +42,12 @@ lto = "thin"
 codegen-units = 1
 ```
 
-- [ ] **Step 2: Verify release build works**
+- [x] **Step 2: Verify release build works**
 
 Run: `cargo build --release`
 Expected: compiles with no errors (warnings are OK if they existed before).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Cargo.toml
@@ -66,7 +66,7 @@ git commit -m "perf: enable thin LTO and single codegen unit for release builds"
 - Consumes: public API `shacl_rust::rdf::read_graph_from_string(&str, &str) -> Result<Graph, ShaclError>`, `shacl_rust::parse_shapes(&Graph) -> Result<Vec<Shape>, ShaclError>`, `shacl_rust::validation::dataset::ValidationDataset::from_graphs(Graph, Graph) -> Result<ValidationDataset, ShaclError>`, `shacl_rust::validation::validate(&ValidationDataset, &[Shape]) -> ValidationReport`
 - Produces: benchmark names `full_pipeline_100`, `full_pipeline_1000`, `validate_only_100`, `validate_only_1000` used to compare before/after in later tasks.
 
-- [ ] **Step 1: Register the bench target**
+- [x] **Step 1: Register the bench target**
 
 In the root `Cargo.toml`, add at the end of the file:
 
@@ -76,7 +76,7 @@ name = "validation"
 harness = false
 ```
 
-- [ ] **Step 2: Write the benchmark**
+- [x] **Step 2: Write the benchmark**
 
 Create `benches/validation.rs` with exactly:
 
@@ -174,14 +174,14 @@ criterion_group!(benches, bench_validation);
 criterion_main!(benches);
 ```
 
-- [ ] **Step 3: Run the benchmark and record the baseline**
+- [x] **Step 3: Run the benchmark and record the baseline**
 
 Run: `cargo bench --bench validation`
 Expected: all four benchmarks run and print timings. Copy the four median times into a new file `docs/superpowers/plans/2026-07-19-bench-baseline.txt` (plain text, one line per benchmark). Criterion also stores results in `target/criterion/` and will print change percentages on later runs automatically.
 
 Note: the benchmark data conforms to the shapes (0 violations expected), so this measures the conforming fast path — which is the common production case.
 
-- [ ] **Step 4: Make sure the bench file is not published with the crate**
+- [x] **Step 4: Make sure the bench file is not published with the crate**
 
 In the root `Cargo.toml`, the `exclude` list under `[package]` must contain `"benches/*"`. Add it if missing:
 
@@ -199,12 +199,12 @@ exclude = [
 
 Note: because the bench is excluded from the published crate, the `[[bench]]` section must stay — cargo needs it locally, and `cargo publish` validates the manifest against the packaged file list. If `cargo publish --dry-run` is part of CI and complains about the missing bench file, add `bench = false` under `[lib]` instead of excluding, and report this in your summary.
 
-- [ ] **Step 5: Verify the test suite still passes**
+- [x] **Step 5: Verify the test suite still passes**
 
 Run: `cargo test`
 Expected: same pass/fail results as on `main` before this task (all green).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Cargo.toml benches/validation.rs docs/superpowers/plans/2026-07-19-bench-baseline.txt
@@ -224,7 +224,7 @@ git commit -m "test: add criterion benchmark for validation pipeline"
 
 Both functions do a BFS with `while let Some(current) = to_visit.pop()`. Inside the loop they call `to_visit.contains(&class)` — a linear scan of the frontier on every iteration, making the traversal O(V²). The scan is redundant: the `if current == class { return true; }` check at the top of the loop already detects the target when it is popped.
 
-- [ ] **Step 1: Delete the redundant scan in `is_subclass_of`**
+- [x] **Step 1: Delete the redundant scan in `is_subclass_of`**
 
 In `src/utils.rs`, inside `is_subclass_of`, delete these three lines (they appear right before the closing `}` of the `while` loop):
 
@@ -234,7 +234,7 @@ In `src/utils.rs`, inside `is_subclass_of`, delete these three lines (they appea
         }
 ```
 
-- [ ] **Step 2: Delete the redundant scan in `is_subproperty_of`**
+- [x] **Step 2: Delete the redundant scan in `is_subproperty_of`**
 
 In `src/utils.rs`, inside `is_subproperty_of`, delete these three lines (same shape, referencing `property`):
 
@@ -244,12 +244,12 @@ In `src/utils.rs`, inside `is_subproperty_of`, delete these three lines (same sh
         }
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cargo test`
 Expected: all tests pass, same as baseline.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/utils.rs
@@ -269,7 +269,7 @@ git commit -m "perf: remove redundant O(n^2) frontier scans in subclass/subprope
 
 The current membership test iterates *every* triple of the value node and filters for `rdf:type` in code. Oxigraph has a direct (subject, predicate) index lookup.
 
-- [ ] **Step 1: Replace the scan with an indexed lookup**
+- [x] **Step 1: Replace the scan with an indexed lookup**
 
 In `src/validation/constraints/class.rs`, replace:
 
@@ -287,12 +287,12 @@ with:
                     .any(|object| object == self.0.into());
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `cargo test`
 Expected: all tests pass, same as baseline (this is a pure lookup-strategy change; the matched set is identical).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/validation/constraints/class.rs
@@ -314,7 +314,7 @@ Note for the summary report: `sh:class` currently matches only the *direct* `rdf
 
 `self.0.contains(&value_node)` is a linear scan per value node — O(values × list length). Build a `HashSet` once per call instead. (`TermRef` is `Copy + Eq + Hash`.)
 
-- [ ] **Step 1: Replace the linear scan**
+- [x] **Step 1: Replace the linear scan**
 
 In `src/validation/constraints/sh_in.rs`, add to the imports at the top:
 
@@ -341,12 +341,12 @@ with:
             if !allowed.contains(&value_node) {
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `cargo test`
 Expected: all tests pass, same as baseline.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/validation/constraints/sh_in.rs
@@ -370,7 +370,7 @@ Today `Regex::new` runs inside `validate()`, i.e. once per focus node. Regex com
 
 `regex::Regex` does not implement `PartialEq`/`Eq`, and `Constraint` derives both — so `PatternConstraint` needs manual impls that ignore the compiled field.
 
-- [ ] **Step 1: Change the struct and add the constructor**
+- [x] **Step 1: Change the struct and add the constructor**
 
 In `src/core/constraints.rs`, replace:
 
@@ -432,7 +432,7 @@ impl Eq for PatternConstraint {}
 
 (The flag-translation logic is moved verbatim from `src/validation/constraints/pattern.rs:22-38` — including the existing quirk that `flags: Some("")` produces the invalid pattern `(?)…` and therefore `compiled: None`. Keep that behavior.)
 
-- [ ] **Step 2: Use the constructor in the parser**
+- [x] **Step 2: Use the constructor in the parser**
 
 In `src/parser/constraints/pattern.rs`, replace:
 
@@ -451,7 +451,7 @@ with:
             ))])
 ```
 
-- [ ] **Step 3: Use the precompiled regex in the validator**
+- [x] **Step 3: Use the precompiled regex in the validator**
 
 In `src/validation/constraints/pattern.rs`, delete the import `use regex::Regex;` and replace everything from `let regex_pattern = if let Some(ref f) = self.flags {` through `let Ok(re) = Regex::new(&regex_pattern) else {\n            return Ok(violations);\n        };` (lines 22-42) with:
 
@@ -463,12 +463,12 @@ In `src/validation/constraints/pattern.rs`, delete the import `use regex::Regex;
 
 The rest of the function (the `for &value_node in value_nodes` loop using `re.is_match`) stays unchanged.
 
-- [ ] **Step 4: Check for other construction sites**
+- [x] **Step 4: Check for other construction sites**
 
 Run: `grep -rn "PatternConstraint {" src/ tests/ crates/`
 Expected: no matches outside `src/core/constraints.rs` (the struct definition and constructor). If a match appears, convert it to `PatternConstraint::new(...)`.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cargo test`
 Expected: all tests pass, same as baseline.
@@ -476,7 +476,7 @@ Expected: all tests pass, same as baseline.
 Run: `cargo bench --bench validation`
 Expected: `validate_only_*` benchmarks improve (the benchmark shapes include a `sh:pattern`); criterion prints the change vs. the stored baseline.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/constraints.rs src/parser/constraints/pattern.rs src/validation/constraints/pattern.rs
@@ -497,7 +497,7 @@ git commit -m "perf: compile sh:pattern regex once at parse time instead of per 
 
 `from_graphs` currently copies the entire data graph and shapes graph into an oxigraph `Store` one quad at a time (each insert is a full transaction). That store is read in exactly one place — `src/validation/constraints/sparql.rs:75` — so for shapes graphs without SPARQL constraints (the common case) the whole store build is wasted work and doubles memory. Fix both: build the store only on first `store()` call, and use one `extend` transaction instead of per-quad inserts.
 
-- [ ] **Step 1: Replace `src/validation/dataset.rs`**
+- [x] **Step 1: Replace `src/validation/dataset.rs`**
 
 Replace the entire file content with:
 
@@ -597,7 +597,7 @@ impl Deref for ValidationDataset {
 }
 ```
 
-- [ ] **Step 2: Update the one caller of `store()`**
+- [x] **Step 2: Update the one caller of `store()`**
 
 In `src/validation/constraints/sparql.rs`, replace:
 
@@ -613,12 +613,12 @@ with:
 
 (The surrounding function returns `Result<Vec<ValidationResult<'a>>, ShaclError>`, so `?` works.)
 
-- [ ] **Step 3: Check for other callers**
+- [x] **Step 3: Check for other callers**
 
 Run: `grep -rn "\.store()" src/ crates/`
 Expected: only the `sparql.rs` call and the definition in `dataset.rs`. If another caller appears, apply the same `?` (or propagate the error appropriately).
 
-- [ ] **Step 4: Verify native and wasm**
+- [x] **Step 4: Verify native and wasm**
 
 Run: `cargo test`
 Expected: all tests pass — the conformance suite includes SPARQL-constraint tests, which exercises the lazy path.
@@ -629,7 +629,7 @@ Expected: compiles (dataset.rs is shared with the wasm build).
 Run: `cargo bench --bench validation`
 Expected: `full_pipeline_*` benchmarks improve substantially (the benchmark shapes contain no SPARQL constraints, so the store is now never built).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/validation/dataset.rs src/validation/constraints/sparql.rs
@@ -649,7 +649,7 @@ git commit -m "perf: build SPARQL store lazily and load it in a single transacti
 
 Inside `for maybe_value in run_once_targets`, the bindings for `this`, `shapesGraph`, `currentShape`, `PATH`, and all parameter bindings are rebuilt (with `format!` allocations) per target, though they are constant for the whole call. Only `value` varies. Build the constant part once.
 
-- [ ] **Step 1: Hoist the constant bindings**
+- [x] **Step 1: Hoist the constant bindings**
 
 In `src/validation/constraints/sparql.rs`, the loop currently begins:
 
@@ -709,12 +709,12 @@ Replace that with (the constant part moves *above* the loop):
 
 Everything after this point in the loop body (`let bound_query = utils::inject_values_bindings(...)` onward) stays unchanged.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `cargo test`
 Expected: all tests pass — the conformance suite covers SPARQL constraints with parameters and paths.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/validation/constraints/sparql.rs
@@ -742,7 +742,7 @@ Today, `resolve_element` allocates a `subjects` Vec, a `results` Vec, and a dedu
 
 The doctest at the top of `src/core/path.rs` (lines 17-73) asserts on result sets via `len` + `contains` and stays valid; do not modify it.
 
-- [ ] **Step 1: Replace the two resolve methods**
+- [x] **Step 1: Replace the two resolve methods**
 
 In `src/core/path.rs`, replace everything from the line `/// Resolves the path for a given node in the graph, returning all reachable nodes.` (line 108) through the end of `resolve_element` (the `}` at line 211, just before the closing `}` of `impl<'a> Path<'a>`) with:
 
@@ -846,7 +846,7 @@ In `src/core/path.rs`, replace everything from the line `/// Resolves the path f
     }
 ```
 
-- [ ] **Step 2: Verify the path tests specifically, then the whole suite**
+- [x] **Step 2: Verify the path tests specifically, then the whole suite**
 
 Run: `cargo test --test path`
 Expected: PASS.
@@ -854,12 +854,12 @@ Expected: PASS.
 Run: `cargo test`
 Expected: all tests pass, including the doctest in `src/core/path.rs` (doctests run as part of `cargo test`).
 
-- [ ] **Step 3: Benchmark**
+- [x] **Step 3: Benchmark**
 
 Run: `cargo bench --bench validation`
 Expected: no regression on `validate_only_*` (the benchmark uses simple single-IRI paths; the big wins here are on transitive paths, which the conformance suite covers for correctness).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/path.rs
@@ -870,11 +870,11 @@ git commit -m "perf: expand property paths via callback to avoid per-step Vec/Ha
 
 ## Final verification (after all tasks)
 
-- [ ] Run `cargo test` — everything green.
-- [ ] Run `cargo check -p shacl-wasm --target wasm32-unknown-unknown` — compiles.
-- [ ] Run `cargo bench --bench validation` and append the final numbers to `docs/superpowers/plans/2026-07-19-bench-baseline.txt` under a `=== after ===` line.
-- [ ] Run `cargo clippy --all-targets` — no *new* warnings versus `main` (pre-existing warnings are out of scope).
-- [ ] Summarize in your final report: per-benchmark before/after medians, any task skipped and why, and the `sh:class` subclass-semantics note from Task 4.
+- [x] Run `cargo test` — everything green.
+- [x] Run `cargo check -p shacl-wasm --target wasm32-unknown-unknown` — compiles.
+- [x] Run `cargo bench --bench validation` and append the final numbers to `docs/superpowers/plans/2026-07-19-bench-baseline.txt` under a `=== after ===` line.
+- [x] Run `cargo clippy --all-targets` — no *new* warnings versus `main` (pre-existing warnings are out of scope).
+- [x] Summarize in your final report: per-benchmark before/after medians, any task skipped and why, and the `sh:class` subclass-semantics note from Task 4.
 
 ## Out of scope (deliberately not tasks — needs design decisions or riskier surgery)
 
