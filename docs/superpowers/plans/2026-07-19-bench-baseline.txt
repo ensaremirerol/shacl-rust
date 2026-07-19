@@ -22,3 +22,21 @@ sparql_validate_1000   before 36.740 ms   after 6.2062 ms   (~5.9x faster)
 
 Query is parsed once per constraint call and per-node terms are pre-bound
 via oxigraph variable substitution instead of textual VALUES injection.
+
+=== comparison pre-parse + lazy violation strings (follow-up) ===
+validate_only_100    131.52 us -> 115.24 us   (~12% faster)
+validate_only_1000   1.0027 ms -> 1.0910 ms   (noise; within run variance)
+
+Investigated and deliberately skipped (documented so they are not re-litigated):
+- (focus, path) value-node memoization: pair constraints resolve the
+  *comparison* path (sh:lessThan ex:other), not the shape path, so the
+  claimed duplication mostly does not exist; a general memo would require
+  threading a cache through the recursive Validate surface (~7 files).
+- per-shape sibling-qualified/closed caches: sibling map is only built when
+  sh:qualifiedValueShapesDisjoint is present (HashMap::new does not
+  allocate otherwise); closed shapes are rare. Cost of self-referential
+  or invariance-breaking cache fields in Shape outweighs the win.
+- rayon flattening: nested par_iter shares one work-stealing pool (no
+  oversubscription); per-node reports are empty Vecs (no allocation) on
+  the conforming path. Measured per-node overhead ~1us; not worth the
+  restructuring risk.
