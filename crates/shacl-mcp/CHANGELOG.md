@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.2.0...shacl-mcp-v0.2.2) (2026-07-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.1 to 0.2.2
+
 ## [0.2.0](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.1.7...shacl-mcp-v0.2.0) (2026-07-19)
 
 

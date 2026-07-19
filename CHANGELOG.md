@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.1...shacl-rust-v0.2.2) (2026-07-19)
+
+
+### Miscellaneous
+
+* release main ([6c3f128](https://github.com/ensaremirerol/shacl-rust/commit/6c3f1284ecdf32f864da71766934041125ed8a22))
+
 ## [0.2.1](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.0...shacl-rust-v0.2.1) (2026-07-19)
 
 
