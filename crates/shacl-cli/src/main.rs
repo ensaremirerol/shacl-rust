@@ -65,7 +65,7 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Output format as file extension (ttl, nt, nq, rdf, jsonld, trig, json, yaml)
+        /// Output format as file extension (ttl/turtle, nt, nq, rdf, jsonld, trig, json, yaml)
         /// If omitted or 'text', prints human-readable format. Otherwise exports as RDF graph.
         #[arg(long, default_value = "text")]
         output_format: String,
@@ -95,12 +95,17 @@ enum Commands {
 fn main() -> Result<(), ShaclError> {
     let cli = Cli::parse();
 
-    // Initialize logger based on verbosity
-    let log_level = match cli.verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
+    // Initialize logger based on verbosity (quiet, on the validate subcommand, forces "error")
+    let quiet = matches!(cli.command, Commands::Validate { quiet: true, .. });
+    let log_level = if quiet {
+        "error"
+    } else {
+        match cli.verbose {
+            0 => "warn",
+            1 => "info",
+            2 => "debug",
+            _ => "trace",
+        }
     };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
@@ -122,7 +127,7 @@ fn main() -> Result<(), ShaclError> {
             shapes_format,
             output,
             output_format,
-            quiet,
+            quiet: _,
         } => {
             info!("Validating {} data file(s)", data_files.len());
             info!("Using shapes: {}", shapes_file.display());
@@ -133,7 +138,6 @@ fn main() -> Result<(), ShaclError> {
                 shapes_format,
                 output,
                 &output_format,
-                quiet,
             )
         }
         Commands::Info {
@@ -277,12 +281,7 @@ fn validate_command(
     shapes_format: Option<String>,
     output: Option<PathBuf>,
     output_format: &str,
-    quiet: bool,
 ) -> Result<(), ShaclError> {
-    // If quiet is set, override log level to error
-    if quiet {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
-    }
     let data_graphs_results: Vec<Result<(PathBuf, oxigraph::model::Graph), ShaclError>> =
         data_files
             .into_par_iter()
@@ -350,9 +349,15 @@ fn validate_command(
         _ => {
             // Try to parse as RDF format (ttl, nt, nq, rdf, jsonld, trig)
             use oxigraph::io::RdfFormat;
-            let rdf_format = RdfFormat::from_extension(output_format).ok_or_else(|| {
+            // "turtle" is the conventional RDF-ecosystem name for the "ttl" extension.
+            let normalized_format = if output_format.eq_ignore_ascii_case("turtle") {
+                "ttl"
+            } else {
+                output_format
+            };
+            let rdf_format = RdfFormat::from_extension(normalized_format).ok_or_else(|| {
                 ShaclError::Parse(format!(
-                    "Unsupported output format: '{}'. Supported: text, json, yaml, ttl, nt, nq, rdf, jsonld, trig",
+                    "Unsupported output format: '{}'. Supported: text, json, yaml, ttl/turtle, nt, nq, rdf, jsonld, trig",
                     output_format
                 ))
             })?;
