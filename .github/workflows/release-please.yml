@@ -8,6 +8,7 @@ on:
             - "crates/**"
             - "src/**"
             - "Cargo.toml"
+            - ".github/release-please-config.json"
 
 permissions:
     contents: write
