@@ -1,4 +1,5 @@
 use oxigraph::model::TermRef;
+use std::collections::HashSet;
 
 use crate::{
     core::{constraints::InConstraint, path::Path, shape::Shape},
@@ -17,9 +18,10 @@ impl<'a> Validate<'a> for InConstraint<'a> {
         shape: &'a Shape<'a>,
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
+        let allowed: HashSet<TermRef<'a>> = self.0.iter().copied().collect();
 
         for &value_node in value_nodes {
-            if !self.0.contains(&value_node) {
+            if !allowed.contains(&value_node) {
                 let builder = ViolationBuilder::new(focus_node)
                     .value(value_node)
                     .message("Value is not in the allowed list")
