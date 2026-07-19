@@ -360,39 +360,6 @@ pub fn rewrite_this_binding_query(query: &str, this_term: &str) -> String {
         .to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn inject_values_bindings_handles_where_less_ask() {
-        let query = "ASK {\n    FILTER ($value != $requiredParam) .\n}";
-        let bound = inject_values_bindings(
-            query,
-            &[
-                ("value".to_string(), "\"One\"".to_string()),
-                ("requiredParam".to_string(), "\"One\"".to_string()),
-            ],
-        );
-
-        assert!(
-            bound.starts_with("ASK {\nVALUES $value"),
-            "VALUES must be injected right after the opening brace, got: {bound}"
-        );
-        assert!(bound.contains("VALUES $requiredParam"));
-        // The query must remain parseable SPARQL: ASK still comes before the pattern block.
-        assert!(bound.trim_start().starts_with("ASK"));
-    }
-
-    #[test]
-    fn inject_values_bindings_handles_explicit_where() {
-        let query = "SELECT ?x WHERE {\n  ?x a ?type .\n}";
-        let bound = inject_values_bindings(query, &[("this".to_string(), "<urn:a>".to_string())]);
-
-        assert!(bound.contains("WHERE {\nVALUES $this"));
-    }
-}
-
 /// Extract direct IRI predicates from a path
 pub fn extract_direct_predicates<'a>(
     path: &'a crate::core::path::Path<'a>,
@@ -463,5 +430,38 @@ where
             }
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inject_values_bindings_handles_where_less_ask() {
+        let query = "ASK {\n    FILTER ($value != $requiredParam) .\n}";
+        let bound = inject_values_bindings(
+            query,
+            &[
+                ("value".to_string(), "\"One\"".to_string()),
+                ("requiredParam".to_string(), "\"One\"".to_string()),
+            ],
+        );
+
+        assert!(
+            bound.starts_with("ASK {\nVALUES $value"),
+            "VALUES must be injected right after the opening brace, got: {bound}"
+        );
+        assert!(bound.contains("VALUES $requiredParam"));
+        // The query must remain parseable SPARQL: ASK still comes before the pattern block.
+        assert!(bound.trim_start().starts_with("ASK"));
+    }
+
+    #[test]
+    fn inject_values_bindings_handles_explicit_where() {
+        let query = "SELECT ?x WHERE {\n  ?x a ?type .\n}";
+        let bound = inject_values_bindings(query, &[("this".to_string(), "<urn:a>".to_string())]);
+
+        assert!(bound.contains("WHERE {\nVALUES $this"));
     }
 }
