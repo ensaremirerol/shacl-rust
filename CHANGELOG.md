@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.0...shacl-rust-v0.2.1) (2026-07-19)
+
+
+### Miscellaneous
+
+* align Cargo.lock with crate versions ([5c2737b](https://github.com/ensaremirerol/shacl-rust/commit/5c2737b999a2b3465fd2aa2d080110eb793231c5))
+* enable cargo-workspace plugin for release-please ([ece2593](https://github.com/ensaremirerol/shacl-rust/commit/ece259349c99e9075917cf41de20c926f17ad199))
+* scope root package commits with exclude-paths in release-please ([be147ef](https://github.com/ensaremirerol/shacl-rust/commit/be147ef99a6a7f6d481340a86be176218d1ec2c7))
+
 ## [0.2.0](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.7...shacl-rust-v0.2.0) (2026-07-19)
 
 
