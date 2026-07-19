@@ -1,6 +1,6 @@
 {
-    ".": "0.2.1",
-    "crates/shacl-cli": "0.2.1",
-    "crates/shacl-mcp": "0.2.0",
-    "crates/shacl-wasm": "0.1.7"
+    ".": "0.2.2",
+    "crates/shacl-cli": "0.2.2",
+    "crates/shacl-mcp": "0.2.2",
+    "crates/shacl-wasm": "0.1.8"
 }
