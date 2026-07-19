@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.2.0](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.7...shacl-rust-v0.2.0) (2026-07-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove unused inject_values_bindings helper
+
+### refactor
+
+* remove unused inject_values_bindings helper ([bf14bfc](https://github.com/ensaremirerol/shacl-rust/commit/bf14bfc5fa1e2eeebf90ff46494f02936a7e628e))
+
+
+### Bug Fixes
+
+* sh:class matches instances of rdfs:subClassOf subclasses ([e87313f](https://github.com/ensaremirerol/shacl-rust/commit/e87313f604768cb7460bd965e1f9890ba72121f6))
+
+
+### Performance Improvements
+
+* build SPARQL store lazily in one transaction, hoist constant bindings ([95eb231](https://github.com/ensaremirerol/shacl-rust/commit/95eb2315cf8dc145f91fb6f67d63ae9bdcdd8a41))
+* compile sh:pattern regex once at parse time instead of per focus node ([17100ee](https://github.com/ensaremirerol/shacl-rust/commit/17100ee9cf88c2785658b587795ddc7f036baf62))
+* expand property paths via callback to avoid per-step allocations ([f52562f](https://github.com/ensaremirerol/shacl-rust/commit/f52562f17bbe3e6dbe3ef415202070710d285442))
+* parse sh:sparql queries once and pre-bind terms via variable substitution ([7073b09](https://github.com/ensaremirerol/shacl-rust/commit/7073b09edb37f73ee8a186a3f85da911f021e6fe))
+* pre-parse comparison literals and build violation strings lazily ([1777ec8](https://github.com/ensaremirerol/shacl-rust/commit/1777ec8252fd2d34db88010b701f45dde59d150e))
+* remove redundant O(n^2) frontier scans in subclass/subproperty traversal ([1c1001f](https://github.com/ensaremirerol/shacl-rust/commit/1c1001fc6769d55f23ca4d494c2489264940f53b))
+* use HashSet membership test in sh:in constraint ([4fac93e](https://github.com/ensaremirerol/shacl-rust/commit/4fac93eea85867525283b79558e1917c6bee0d4a))
+
+
+### Documentation
+
+* mark performance plan as completed ([e177304](https://github.com/ensaremirerol/shacl-rust/commit/e177304dd1f5cc492cfedfcab52fc5d5c7cad778))
+* record follow-up bench results and skipped-optimization rationale ([dce40d7](https://github.com/ensaremirerol/shacl-rust/commit/dce40d7b9472cdc5c4619271acce8ee9ce069e0d))
+
 ## [0.1.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.1.6...shacl-rust-v0.1.7) (2026-07-19)
 
 
