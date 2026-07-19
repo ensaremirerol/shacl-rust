@@ -1,0 +1,17 @@
+Benchmark results (criterion medians), cargo bench --bench validation
+Machine: aarch64 linux, 2026-07-19
+
+=== before (main @ f4c7ccb) ===
+full_pipeline_100    3.2737 ms
+validate_only_100    1.7914 ms
+full_pipeline_1000   26.793 ms
+validate_only_1000   12.499 ms
+
+=== after (all 9 plan tasks applied) ===
+full_pipeline_100    852.88 us   (~3.8x faster)
+validate_only_100    131.52 us   (~13.6x faster)
+full_pipeline_1000   4.7954 ms   (~5.6x faster)
+validate_only_1000   1.0027 ms   (~12.5x faster)
+
+Main contributors: lazy SPARQL store (full_pipeline), precompiled sh:pattern
+regex + indexed sh:class lookup (validate_only).

@@ -14,10 +14,15 @@ exclude = [
     "examples/*",
     ".github/*",
     ".devcontainer/*",
+    "benches/*",
 ]
 
 [workspace]
 members = ["crates/shacl-cli", "crates/shacl-wasm", "crates/shacl-mcp"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
 
 [lib]
 name = "shacl_rust"
@@ -52,3 +57,7 @@ oxigraph = { version = "0.5.5", default-features = false, features = ["js"] }
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.10"
+
+[[bench]]
+name = "validation"
+harness = false
