@@ -118,7 +118,7 @@ impl<'a> ValidationReport<'a> {
             let result_subject = Self::add_validation_result_to_graph(&mut graph, result);
             graph.insert(&Triple::new(
                 report_subject.clone(),
-                NamedNode::from(sh::DETAIL),
+                NamedNode::from(sh::RESULT),
                 Term::from(result_subject),
             ));
         }
@@ -427,6 +427,48 @@ impl<'a> Display for ValidationResult<'a> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxigraph::model::NamedNode;
+
+    #[test]
+    fn to_graph_links_report_to_results_via_sh_result() {
+        let focus = NamedNode::new("http://example.org/Alice").unwrap();
+        let shape = NamedNode::new("http://example.org/PersonShape").unwrap();
+        let result = ValidationResult::new(
+            TermRef::from(focus.as_ref()),
+            NamedOrBlankNodeRef::from(shape.as_ref()),
+            sh::VIOLATION,
+        );
+
+        let mut report = ValidationReport::new();
+        report.add_result(result);
+
+        let graph = report.to_graph();
+        let report_node = graph
+            .subjects_for_predicate_object(
+                oxigraph::model::vocab::rdf::TYPE,
+                TermRef::from(sh::VALIDATION_REPORT),
+            )
+            .next()
+            .expect("report node present");
+
+        let linked_results: Vec<_> = graph
+            .objects_for_subject_predicate(report_node, NamedNode::from(sh::RESULT).as_ref())
+            .collect();
+        assert_eq!(linked_results.len(), 1, "report should link its one result via sh:result");
+
+        let via_detail: Vec<_> = graph
+            .objects_for_subject_predicate(report_node, NamedNode::from(sh::DETAIL).as_ref())
+            .collect();
+        assert!(
+            via_detail.is_empty(),
+            "report should not link results via sh:detail"
+        );
     }
 }
 
