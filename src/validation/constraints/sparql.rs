@@ -72,7 +72,7 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
 
-        let store = validation_dataset.store();
+        let store = validation_dataset.store()?;
 
         let mut evaluator = SparqlEvaluator::new();
         for (prefix, namespace) in &self.prefixes {
@@ -101,27 +101,29 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
 
         let query_text = self.executable.query();
 
+        let mut base_bindings: Vec<(String, String)> = Vec::new();
+        base_bindings.push(("this".to_string(), format!("{}", focus_node)));
+        base_bindings.push((
+            "shapesGraph".to_string(),
+            format!("<{}>", dataset::SHAPES_GRAPH_IRI),
+        ));
+        base_bindings.push(("currentShape".to_string(), format!("{}", shape.node)));
+
+        if let Some(path) = path {
+            if let Some(predicate) = utils::extract_direct_predicates(path).into_iter().next() {
+                base_bindings.push(("PATH".to_string(), format!("{}", predicate)));
+            }
+        }
+
+        for (name, value) in &self.parameter_bindings {
+            base_bindings.push((name.to_string(), format!("{}", value)));
+        }
+
         for maybe_value in run_once_targets {
-            let mut bindings: Vec<(String, String)> = Vec::new();
-            bindings.push(("this".to_string(), format!("{}", focus_node)));
-            bindings.push((
-                "shapesGraph".to_string(),
-                format!("<{}>", dataset::SHAPES_GRAPH_IRI),
-            ));
-            bindings.push(("currentShape".to_string(), format!("{}", shape.node)));
+            let mut bindings = base_bindings.clone();
 
             if let Some(value) = maybe_value {
                 bindings.push(("value".to_string(), format!("{}", value)));
-            }
-
-            if let Some(path) = path {
-                if let Some(predicate) = utils::extract_direct_predicates(path).into_iter().next() {
-                    bindings.push(("PATH".to_string(), format!("{}", predicate)));
-                }
-            }
-
-            for (name, value) in &self.parameter_bindings {
-                bindings.push((name.to_string(), format!("{}", value)));
             }
 
             let bound_query = utils::inject_values_bindings(query_text, &bindings);
