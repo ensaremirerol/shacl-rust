@@ -89,6 +89,10 @@ impl<'a> ValidationReport<'a> {
         self.results.push(result);
     }
 
+    pub fn into_results(self) -> Vec<ValidationResult<'a>> {
+        self.results
+    }
+
     pub fn extend_results(&mut self, results: Vec<ValidationResult<'a>>) {
         if !results.is_empty() {
             self.conforms = false;

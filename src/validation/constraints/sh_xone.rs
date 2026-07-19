@@ -33,12 +33,9 @@ impl<'a> Validate<'a> for XoneConstraint<'a> {
 
                 if *nested_report.get_conforms() {
                     conforming_count += 1;
-                    conforming_shapes.push(nested_shape.node.to_string());
+                    conforming_shapes.push(nested_shape.node);
                 } else {
-                    nested_report
-                        .get_results()
-                        .iter()
-                        .for_each(|r| all_nested_results.push(r.clone()));
+                    all_nested_results.extend(nested_report.into_results());
                 }
             }
 
@@ -50,7 +47,11 @@ impl<'a> Validate<'a> for XoneConstraint<'a> {
                     format!(
                         "Value does not conform to exactly one shape in sh:xone (conforms to {} shapes: {})",
                         conforming_count,
-                        conforming_shapes.join(", ")
+                        conforming_shapes
+                            .iter()
+                            .map(|node| node.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                 };
 

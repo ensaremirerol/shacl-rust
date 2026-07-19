@@ -18,9 +18,18 @@ impl<'a> Validate<'a> for MaxInclusiveConstraint<'a> {
         shape: &'a Shape<'a>,
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
+        // Parsed once; `None` (non-literal bound) makes every value violate,
+        // matching compare_values semantics.
+        let bound = utils::to_comparable(self.0);
 
         for &value_node in value_nodes {
-            if !utils::compare_values(value_node, self.0, |cmp| cmp <= 0) {
+            let conforms = match (&bound, utils::to_comparable(value_node)) {
+                (Some(bound), Some(value)) => {
+                    utils::compare_comparables(&value, bound, |cmp| cmp <= 0)
+                }
+                _ => false,
+            };
+            if !conforms {
                 let builder = ViolationBuilder::new(focus_node)
                     .value(value_node)
                     .message(format!("Value {} exceeds maximum {}", value_node, self.0))

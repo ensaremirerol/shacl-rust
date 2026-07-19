@@ -19,7 +19,7 @@ impl<'a> Validate<'a> for OrConstraint<'a> {
         let mut violations = Vec::new();
 
         for &value_node in value_nodes {
-            let mut all_nested_results = Vec::new();
+            let mut failed_reports = Vec::new();
             let mut any_conforms = false;
 
             for nested_shape in &self.0 {
@@ -34,14 +34,15 @@ impl<'a> Validate<'a> for OrConstraint<'a> {
                     any_conforms = true;
                     break;
                 } else {
-                    nested_report
-                        .get_results()
-                        .iter()
-                        .for_each(|r| all_nested_results.push(r.clone()));
+                    failed_reports.push(nested_report);
                 }
             }
 
             if !any_conforms {
+                let all_nested_results: Vec<_> = failed_reports
+                    .into_iter()
+                    .flat_map(|report| report.into_results())
+                    .collect();
                 let builder = ViolationBuilder::new(focus_node)
                     .value(value_node)
                     .message("Value does not conform to any shape in sh:or")

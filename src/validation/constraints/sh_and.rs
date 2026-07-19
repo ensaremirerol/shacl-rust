@@ -32,10 +32,7 @@ impl<'a> Validate<'a> for AndConstraint<'a> {
 
                 if !*nested_report.get_conforms() {
                     failed_shapes.push(nested_shape.node.to_string());
-                    nested_report
-                        .get_results()
-                        .iter()
-                        .for_each(|r| all_nested_results.push(r.clone()));
+                    all_nested_results.extend(nested_report.into_results());
                 }
             }
 

@@ -387,42 +387,58 @@ pub fn extract_direct_predicates<'a>(
     predicates
 }
 
+/// A literal pre-parsed for value comparisons, so constant bounds are parsed
+/// once instead of once per compared value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComparableValue<'a> {
+    Number(f64),
+    Text(&'a str),
+}
+
+/// Prepares a term for comparison. Returns `None` for non-literals, which
+/// never compare equal, less, or greater to anything.
+pub fn to_comparable(term: TermRef<'_>) -> Option<ComparableValue<'_>> {
+    match term {
+        TermRef::Literal(lit) => Some(match lit.value().parse::<f64>() {
+            Ok(n) => ComparableValue::Number(n),
+            Err(_) => ComparableValue::Text(lit.value()),
+        }),
+        _ => None,
+    }
+}
+
+/// Compares two pre-parsed literals. Numbers compare numerically, text
+/// compares lexically, and mixed number/text is incompatible (always false).
+pub fn compare_comparables<F>(a: &ComparableValue, b: &ComparableValue, predicate: F) -> bool
+where
+    F: Fn(i32) -> bool,
+{
+    match (a, b) {
+        (ComparableValue::Number(na), ComparableValue::Number(nb)) => {
+            if na < nb {
+                predicate(-1)
+            } else if na > nb {
+                predicate(1)
+            } else {
+                predicate(0)
+            }
+        }
+        (ComparableValue::Text(ta), ComparableValue::Text(tb)) => predicate(match ta.cmp(tb) {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        }),
+        _ => false,
+    }
+}
+
 /// Compare two terms using a predicate function
 pub fn compare_values<F>(a: TermRef, b: TermRef, predicate: F) -> bool
 where
     F: Fn(i32) -> bool,
 {
-    match (a, b) {
-        (TermRef::Literal(lit_a), TermRef::Literal(lit_b)) => {
-            let num_a = lit_a.value().parse::<f64>();
-            let num_b = lit_b.value().parse::<f64>();
-
-            match (num_a, num_b) {
-                (Ok(na), Ok(nb)) => {
-                    // Both are numbers - compare numerically
-                    if na < nb {
-                        predicate(-1)
-                    } else if na > nb {
-                        predicate(1)
-                    } else {
-                        predicate(0)
-                    }
-                }
-                (Err(_), Err(_)) => {
-                    // Both are non-numeric - compare as strings
-                    let cmp = lit_a.value().cmp(lit_b.value());
-                    predicate(match cmp {
-                        std::cmp::Ordering::Less => -1,
-                        std::cmp::Ordering::Equal => 0,
-                        std::cmp::Ordering::Greater => 1,
-                    })
-                }
-                _ => {
-                    // One is numeric, one is not - incompatible types
-                    false
-                }
-            }
-        }
+    match (to_comparable(a), to_comparable(b)) {
+        (Some(ca), Some(cb)) => compare_comparables(&ca, &cb, predicate),
         _ => false,
     }
 }

@@ -17,7 +17,6 @@ impl<'a> Validate<'a> for LanguageInConstraint {
         shape: &'a Shape<'a>,
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
-        let allowed_languages = self.0.join(", ");
 
         for &value_node in value_nodes {
             if let TermRef::Literal(lit) = value_node {
@@ -27,7 +26,7 @@ impl<'a> Validate<'a> for LanguageInConstraint {
                             .value(value_node)
                             .message(format!("Language '{}' not in allowed list", lang))
                             .component(sh::LANGUAGE_IN_CONSTRAINT_COMPONENT)
-                            .detail(format!("sh:languageIn [{}]", allowed_languages));
+                            .detail(format!("sh:languageIn [{}]", self.0.join(", ")));
 
                         violations.push(shape.build_validation_result(builder));
                     }
@@ -36,7 +35,7 @@ impl<'a> Validate<'a> for LanguageInConstraint {
                         .value(value_node)
                         .message("Value has no language tag")
                         .component(sh::LANGUAGE_IN_CONSTRAINT_COMPONENT)
-                        .detail(format!("sh:languageIn [{}]", allowed_languages));
+                        .detail(format!("sh:languageIn [{}]", self.0.join(", ")));
 
                     violations.push(shape.build_validation_result(builder));
                 }

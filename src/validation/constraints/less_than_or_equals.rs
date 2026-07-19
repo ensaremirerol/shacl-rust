@@ -38,12 +38,23 @@ impl<'a> Validate<'a> for LessThanOrEqualsConstraint<'a> {
             vec![focus_node]
         };
 
+        // Non-literal comparison values can never satisfy the predicate, so
+        // only literal ones are parsed; emptiness is still judged on the
+        // unfiltered list below.
+        let other_comparables: Vec<utils::ComparableValue> = other_values
+            .iter()
+            .filter_map(|v| utils::to_comparable(*v))
+            .collect();
+
         for node in nodes_to_check {
+            let node_comparable = utils::to_comparable(node);
             let mut found_valid = false;
-            for other_value in &other_values {
-                if utils::compare_values(node, *other_value, |cmp| cmp <= 0) {
-                    found_valid = true;
-                    break;
+            if let Some(node_comparable) = &node_comparable {
+                for other_value in &other_comparables {
+                    if utils::compare_comparables(node_comparable, other_value, |cmp| cmp <= 0) {
+                        found_valid = true;
+                        break;
+                    }
                 }
             }
             if !found_valid && !other_values.is_empty() {
