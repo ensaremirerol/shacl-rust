@@ -5,9 +5,11 @@ fn validate(data_ttl: &str, shapes_ttl: &str) -> (bool, usize) {
     let data_graph = read_graph_from_string(data_ttl, "turtle").expect("Failed to read data");
     let shapes_graph = read_graph_from_string(shapes_ttl, "turtle").expect("Failed to read shapes");
     let shapes = parse_shapes(&shapes_graph).expect("Failed to parse shapes");
-    let dataset =
-        validation::dataset::ValidationDataset::from_graphs(data_graph.clone(), shapes_graph.clone())
-            .expect("Failed to create dataset");
+    let dataset = validation::dataset::ValidationDataset::from_graphs(
+        data_graph.clone(),
+        shapes_graph.clone(),
+    )
+    .expect("Failed to create dataset");
     let report = validation::validate(&dataset, &shapes);
     (*report.get_conforms(), report.get_results().len())
 }
