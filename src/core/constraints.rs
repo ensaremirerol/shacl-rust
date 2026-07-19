@@ -52,11 +52,49 @@ pub struct MinLengthConstraint(pub i32);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaxLengthConstraint(pub i32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct PatternConstraint {
     pub pattern: String,
     pub flags: Option<String>,
+    /// Compiled at parse time; `None` if `pattern` is not a valid regex.
+    pub compiled: Option<regex::Regex>,
 }
+
+impl PatternConstraint {
+    pub fn new(pattern: String, flags: Option<String>) -> Self {
+        let regex_pattern = if let Some(ref f) = flags {
+            let mut pattern_with_flags = String::from("(?");
+            if f.contains('i') {
+                pattern_with_flags.push('i');
+            }
+            if f.contains('m') {
+                pattern_with_flags.push('m');
+            }
+            if f.contains('s') {
+                pattern_with_flags.push('s');
+            }
+            pattern_with_flags.push(')');
+            pattern_with_flags.push_str(&pattern);
+            pattern_with_flags
+        } else {
+            pattern.clone()
+        };
+        let compiled = regex::Regex::new(&regex_pattern).ok();
+        Self {
+            pattern,
+            flags,
+            compiled,
+        }
+    }
+}
+
+impl PartialEq for PatternConstraint {
+    fn eq(&self, other: &Self) -> bool {
+        self.pattern == other.pattern && self.flags == other.flags
+    }
+}
+
+impl Eq for PatternConstraint {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageInConstraint(pub Vec<String>);

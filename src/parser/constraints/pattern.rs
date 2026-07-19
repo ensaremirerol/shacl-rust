@@ -15,10 +15,9 @@ impl ConstraintParserTrait for SHPatternConstraintParser {
     ) -> Result<Vec<Constraint<'a>>, ShaclError> {
         if let Some(pattern) = get_string_value(graph, shape_node, sh::PATTERN) {
             let flags = get_string_value(graph, shape_node, sh::FLAGS);
-            Ok(vec![Constraint::Pattern(PatternConstraint {
-                pattern,
-                flags,
-            })])
+            Ok(vec![Constraint::Pattern(PatternConstraint::new(
+                pattern, flags,
+            ))])
         } else {
             Ok(vec![])
         }

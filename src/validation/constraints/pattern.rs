@@ -1,5 +1,4 @@
 use oxigraph::model::TermRef;
-use regex::Regex;
 
 use crate::{
     core::{constraints::PatternConstraint, path::Path, shape::Shape},
@@ -19,25 +18,7 @@ impl<'a> Validate<'a> for PatternConstraint {
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
 
-        let regex_pattern = if let Some(ref f) = self.flags {
-            let mut pattern_with_flags = String::from("(?");
-            if f.contains('i') {
-                pattern_with_flags.push('i');
-            }
-            if f.contains('m') {
-                pattern_with_flags.push('m');
-            }
-            if f.contains('s') {
-                pattern_with_flags.push('s');
-            }
-            pattern_with_flags.push(')');
-            pattern_with_flags.push_str(&self.pattern);
-            pattern_with_flags
-        } else {
-            self.pattern.clone()
-        };
-
-        let Ok(re) = Regex::new(&regex_pattern) else {
+        let Some(re) = self.compiled.as_ref() else {
             return Ok(violations);
         };
 
