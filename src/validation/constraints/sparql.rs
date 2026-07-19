@@ -251,27 +251,27 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                                 violations.push(shape.build_validation_result(builder));
                             }
                         }
-                        (SparqlExecutable::Ask(_), Ok(QueryResults::Boolean(result))) => {
-                            if !result {
-                                let mut builder = ViolationBuilder::new(focus_node)
-                                    .component(constraint_component(self))
-                                    .detail(format!(
-                                        "SPARQL ASK (fallback): {}",
-                                        rewritten_query.replace('\n', " ")
-                                    ));
+                        (SparqlExecutable::Ask(_), Ok(QueryResults::Boolean(result)))
+                            if !result =>
+                        {
+                            let mut builder = ViolationBuilder::new(focus_node)
+                                .component(constraint_component(self))
+                                .detail(format!(
+                                    "SPARQL ASK (fallback): {}",
+                                    rewritten_query.replace('\n', " ")
+                                ));
 
-                                if let Some(value) = maybe_value {
-                                    builder = builder.value(value);
-                                }
-
-                                if self.messages.is_empty() {
-                                    builder = builder.message("SPARQL ASK constraint violation");
-                                } else {
-                                    builder = builder.messages(self.messages.iter().cloned());
-                                }
-
-                                violations.push(shape.build_validation_result(builder));
+                            if let Some(value) = maybe_value {
+                                builder = builder.value(value);
                             }
+
+                            if self.messages.is_empty() {
+                                builder = builder.message("SPARQL ASK constraint violation");
+                            } else {
+                                builder = builder.messages(self.messages.iter().cloned());
+                            }
+
+                            violations.push(shape.build_validation_result(builder));
                         }
                         _ => {}
                     }
