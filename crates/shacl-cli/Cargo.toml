@@ -1,6 +1,6 @@
 [package]
 name = "shacl-cli"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2021"
 authors = ["Ensar Emir EROL"]
 description = "Command-line interface for SHACL validation using shacl-rust"
