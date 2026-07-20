@@ -104,6 +104,11 @@ impl IndexedGraph {
         let mut ids_by_hash: FxHashMap<u64, IdSlot> = FxHashMap::default();
 
         let mut intern = |term: Term, terms: &mut Vec<Term>| -> u32 {
+            // Ids are u32; silent wraparound would alias distinct terms.
+            assert!(
+                terms.len() < u32::MAX as usize,
+                "IndexedGraph supports at most 2^32 - 1 distinct terms"
+            );
             let hash = term_hash(term.as_ref());
             match ids_by_hash.entry(hash) {
                 std::collections::hash_map::Entry::Occupied(mut entry) => {
