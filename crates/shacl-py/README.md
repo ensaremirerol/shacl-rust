@@ -36,5 +36,18 @@ print(report["results"][0])        # violation details
 shacl_rust.conforms(data, shapes, experimental_index=True)
 ```
 
+Large graphs can be streamed from disk or any binary file-like object, so
+the serialized text is never fully held in memory:
+
+```python
+report = shacl_rust.validate_file("data.ttl", "shapes.ttl")
+
+import gzip
+with gzip.open("data.ttl.gz", "rb") as f:
+    ok = shacl_rust.conforms_file(f, "shapes.ttl", data_format="turtle",
+                                  experimental_index=True)
+```
+
 Formats: `turtle`/`ttl` (default), `nt`, `nq`, `rdf`, `jsonld`, `trig` via the
-`data_format=` / `shapes_format=` keyword arguments.
+`data_format=` / `shapes_format=` keyword arguments (inferred from path
+extensions for `validate_file`/`conforms_file`).

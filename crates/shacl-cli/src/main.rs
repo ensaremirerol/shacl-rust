@@ -434,8 +434,9 @@ fn validate_command_indexed(
     output: Option<PathBuf>,
     output_format: &str,
 ) -> Result<(), ShaclError> {
-    // Read all data files up front; the streaming parsers borrow the contents.
-    let mut contents: Vec<(PathBuf, String, String)> = Vec::new();
+    // Open every data file as a streaming parser; the serialized text is
+    // never held in memory.
+    let mut parsers = Vec::new();
     for data_file in data_files {
         let effective_format = data_format
             .as_deref()
@@ -447,14 +448,14 @@ fn validate_command_indexed(
                 ))
             })?
             .to_string();
-        let content = std::fs::read_to_string(path_to_str(&data_file)?).map_err(|e| {
+        let file = std::fs::File::open(path_to_str(&data_file)?).map_err(|e| {
             ShaclError::Io(format!(
                 "Failed to read graph file '{}': {}",
                 data_file.display(),
                 e
             ))
         })?;
-        contents.push((data_file, effective_format, content));
+        parsers.push(rdf::parse_triples_from_reader(file, &effective_format)?);
     }
 
     let shapes_graph = read_graph_from_file(&shapes_file, shapes_format.as_deref())?;
@@ -462,13 +463,9 @@ fn validate_command_indexed(
 
     // Stream every file straight into the index; the first parse error wins.
     let parse_error: std::cell::RefCell<Option<ShaclError>> = std::cell::RefCell::new(None);
-    let mut parsers = Vec::new();
-    for (path, format, content) in &contents {
-        parsers.push((path, rdf::parse_triples_from_string(content, format)?));
-    }
     let triples = parsers
         .into_iter()
-        .flat_map(|(_path, iter)| iter)
+        .flatten()
         .filter_map(|result| match result {
             Ok(triple) => Some(triple),
             Err(e) => {
@@ -497,14 +494,6 @@ fn read_graph_from_file(
     path: &Path,
     format: Option<&str>,
 ) -> Result<oxigraph::model::Graph, ShaclError> {
-    let content = std::fs::read_to_string(path_to_str(path)?).map_err(|e| {
-        ShaclError::Io(format!(
-            "Failed to read graph file '{}': {}",
-            path.display(),
-            e
-        ))
-    })?;
-
     let effective_format = format.or_else(|| path.extension().and_then(|ext| ext.to_str()));
     let effective_format = effective_format.ok_or_else(|| {
         ShaclError::Parse(format!(
@@ -512,5 +501,12 @@ fn read_graph_from_file(
             path.display()
         ))
     })?;
-    rdf::read_graph_from_string(&content, effective_format)
+    let file = std::fs::File::open(path_to_str(path)?).map_err(|e| {
+        ShaclError::Io(format!(
+            "Failed to read graph file '{}': {}",
+            path.display(),
+            e
+        ))
+    })?;
+    rdf::read_graph_from_reader(file, effective_format)
 }

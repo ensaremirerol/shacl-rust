@@ -60,6 +60,40 @@ fn read_graph_using_reader_with_base<R: std::io::Read>(
     Ok(graph)
 }
 
+/// Reads a graph by streaming from any reader; the serialized text is never
+/// held in memory as a whole.
+pub fn read_graph_from_reader<R: std::io::Read>(
+    reader: R,
+    file_format: &str,
+) -> Result<oxigraph::model::Graph, ShaclError> {
+    read_graph_using_reader_with_base(BufReader::new(reader), file_format, "http://example.org")
+}
+
+/// Parses triples lazily by streaming from any reader; errors surface as
+/// `Err` items. Combined with
+/// [`ValidationDataset::from_triples_with_experimental_index`](crate::validation::dataset::ValidationDataset::from_triples_with_experimental_index)
+/// this loads arbitrarily large inputs without materializing the text or an
+/// intermediate graph.
+pub fn parse_triples_from_reader<R: std::io::Read>(
+    reader: R,
+    file_format: &str,
+) -> Result<impl Iterator<Item = Result<Triple, ShaclError>>, ShaclError> {
+    let normalized_format = normalize_rdf_format(file_format);
+    let format = RdfFormat::from_extension(&normalized_format).ok_or_else(|| {
+        ShaclError::Parse(format!(
+            "Unsupported file extension: '{}'. Supported: ttl (turtle), nt (n-triples), nq (n-quads), rdf (rdfxml/xml), jsonld (json-ld), trig",
+            file_format
+        ))
+    })?;
+    let parser = RdfParser::from_format(format)
+        .with_base_iri("http://example.org")
+        .map_err(|e| ShaclError::Parse(format!("Invalid base IRI: {}", e)))?;
+    Ok(parser.for_reader(BufReader::new(reader)).map(|quad| {
+        quad.map(Triple::from)
+            .map_err(|e| ShaclError::Parse(format!("Failed to parse RDF data: {}", e)))
+    }))
+}
+
 /// Parses triples lazily from an in-memory string. The returned iterator
 /// borrows `graph_string`; errors surface as `Err` items.
 pub fn parse_triples_from_string<'a>(
