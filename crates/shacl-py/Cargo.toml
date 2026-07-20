@@ -1,6 +1,6 @@
 [package]
 name = "shacl-py"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 authors = ["Ensar Emir EROL"]
 description = "Python bindings for shacl-rust, a SHACL validator for RDF graphs"
