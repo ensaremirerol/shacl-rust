@@ -1417,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "clap",
  "env_logger",
@@ -1430,7 +1430,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-mcp"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "oxigraph",
  "rmcp",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-rust"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "criterion",
  "log",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-wasm"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "oxigraph",
  "serde_json",
