@@ -4,7 +4,8 @@ pub mod report;
 mod violation_builder;
 
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::HashSet;
 
 #[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;
@@ -22,14 +23,14 @@ use crate::{
     ShaclError,
 };
 
-pub type TargetResolutionCache<'a> = HashMap<Target<'a>, HashSet<TermRef<'a>>>;
+pub type TargetResolutionCache<'a> = FxHashMap<Target<'a>, FxHashSet<TermRef<'a>>>;
 
 pub fn build_target_cache<'a>(
     data_graph: impl Into<DataView<'a>>,
     shapes: &'a [Shape<'a>],
 ) -> TargetResolutionCache<'a> {
     let data_graph = data_graph.into();
-    let mut cache = TargetResolutionCache::new();
+    let mut cache = TargetResolutionCache::default();
 
     for shape in shapes {
         for &target in &shape.targets {
@@ -84,7 +85,7 @@ pub fn validate<'a>(
 impl<'a> Shape<'a> {
     /// Validates a data graph against this shape.
     pub fn validate(&'a self, validation_dataset: &'a ValidationDataset) -> ValidationReport<'a> {
-        self.validate_with_target_cache(validation_dataset, &TargetResolutionCache::new())
+        self.validate_with_target_cache(validation_dataset, &TargetResolutionCache::default())
     }
 
     pub fn validate_with_target_cache(
@@ -98,7 +99,7 @@ impl<'a> Shape<'a> {
             return report;
         }
 
-        let mut focus_nodes = HashSet::new();
+        let mut focus_nodes = FxHashSet::default();
         for &target in &self.targets {
             if let Some(cached_nodes) = target_cache.get(&target) {
                 focus_nodes.extend(cached_nodes.iter().copied());
@@ -370,7 +371,7 @@ impl<'a> Shape<'a> {
             None => return,
         };
 
-        let mut allowed_properties: HashSet<NamedNodeRef<'a>> = HashSet::new();
+        let mut allowed_properties: FxHashSet<NamedNodeRef<'a>> = FxHashSet::default();
         for ignored_prop in &closed_constraint.ignored_properties {
             allowed_properties.insert(*ignored_prop);
         }

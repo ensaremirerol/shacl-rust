@@ -1,7 +1,7 @@
 use log::debug;
 use oxigraph::model::vocab::rdf::TYPE;
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::fmt::Display;
 
 /// SHACL Target that represents a target in the SHACL specification.
@@ -48,7 +48,7 @@ impl<'a> Target<'a> {
     pub fn resolve_target_for_given_graph(
         &self,
         graph: impl Into<crate::indexed_graph::DataView<'a>>,
-    ) -> HashSet<oxigraph::model::TermRef<'a>> {
+    ) -> FxHashSet<oxigraph::model::TermRef<'a>> {
         let graph = graph.into();
         debug!(
             "Resolving target: {} for graph with {} triples",
@@ -57,12 +57,12 @@ impl<'a> Target<'a> {
         );
         match self {
             Target::Node(term) => {
-                let mut set = HashSet::new();
+                let mut set = FxHashSet::default();
                 set.insert(*term);
                 set
             }
             Target::Class(class) => {
-                let mut set = HashSet::new();
+                let mut set = FxHashSet::default();
                 let all_subclasses = crate::utils::collect_all_subclasses(*class, graph);
                 for subclass in all_subclasses {
                     graph
@@ -74,7 +74,7 @@ impl<'a> Target<'a> {
                 set
             }
             Target::SubjectsOf(property) => {
-                let mut set = HashSet::new();
+                let mut set = FxHashSet::default();
                 let all_subproperties = crate::utils::collect_all_subproperties(*property, graph);
                 for subproperty in all_subproperties {
                     // Get all subjects where this property is the predicate
@@ -85,7 +85,7 @@ impl<'a> Target<'a> {
                 set
             }
             Target::ObjectsOf(property) => {
-                let mut set = HashSet::new();
+                let mut set = FxHashSet::default();
                 let all_subproperties = crate::utils::collect_all_subproperties(*property, graph);
                 for subproperty in all_subproperties {
                     // Get all objects where this property is the predicate
@@ -100,7 +100,7 @@ impl<'a> Target<'a> {
                 }
                 set
             }
-            Target::Advanced(_) => HashSet::new(),
+            Target::Advanced(_) => FxHashSet::default(),
         }
     }
 }

@@ -1,4 +1,6 @@
-use std::{collections::HashSet, fmt::Display};
+use std::fmt::Display;
+
+use rustc_hash::FxHashSet;
 
 use log::debug;
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
@@ -120,7 +122,7 @@ impl<'a> Path<'a> {
         // Apply each path element in sequence, deduplicating the frontier per step.
         for element in &self.path {
             let mut next_nodes: Vec<TermRef<'a>> = Vec::new();
-            let mut seen: HashSet<TermRef<'a>> = HashSet::new();
+            let mut seen: FxHashSet<TermRef<'a>> = FxHashSet::default();
             for current in &current_nodes {
                 let subject = match current {
                     TermRef::NamedNode(n) => NamedOrBlankNodeRef::from(*n),
@@ -186,7 +188,7 @@ impl<'a> Path<'a> {
         start: NamedOrBlankNodeRef<'a>,
         emit: &mut dyn FnMut(TermRef<'a>),
     ) {
-        let mut visited: HashSet<TermRef<'a>> = HashSet::new();
+        let mut visited: FxHashSet<TermRef<'a>> = FxHashSet::default();
         visited.insert(start.into());
         let mut to_visit: Vec<NamedOrBlankNodeRef<'a>> = vec![start];
 

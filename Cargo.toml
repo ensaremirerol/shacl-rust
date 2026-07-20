@@ -44,6 +44,9 @@ log = "0.4"
 # Regular expressions for pattern matching
 regex = "1.10"
 
+# Fast non-cryptographic hashing for interning and index maps
+rustc-hash = "2"
+
 # SPARQL parser/algebra inspection
 spargebra = "0.4.5"
 serde_json = "1.0.149"

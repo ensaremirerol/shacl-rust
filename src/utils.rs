@@ -1,5 +1,6 @@
 use oxigraph::model::{vocab::rdfs, Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use regex::Regex;
+use rustc_hash::FxHashSet;
 
 use crate::{core::constraints::NodeKind, indexed_graph::DataView, vocab::sh};
 
@@ -9,7 +10,7 @@ pub fn is_subclass_of<'a>(
     graph: impl Into<DataView<'a>>,
 ) -> bool {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
@@ -31,9 +32,9 @@ pub fn is_subclass_of<'a>(
 pub fn collect_all_superclasses<'a>(
     node: NamedOrBlankNodeRef<'a>,
     graph: impl Into<DataView<'a>>,
-) -> std::collections::HashSet<NamedNodeRef<'a>> {
+) -> FxHashSet<NamedNodeRef<'a>> {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
@@ -58,9 +59,9 @@ pub fn collect_all_superclasses<'a>(
 pub fn collect_all_subclasses<'a>(
     node: NamedOrBlankNodeRef<'a>,
     graph: impl Into<DataView<'a>>,
-) -> std::collections::HashSet<NamedNodeRef<'a>> {
+) -> FxHashSet<NamedNodeRef<'a>> {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
@@ -85,7 +86,7 @@ pub fn is_subproperty_of<'a>(
     graph: impl Into<DataView<'a>>,
 ) -> bool {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
@@ -107,9 +108,9 @@ pub fn is_subproperty_of<'a>(
 pub fn collect_all_superproperties<'a>(
     node: NamedNodeRef<'a>,
     graph: impl Into<DataView<'a>>,
-) -> std::collections::HashSet<NamedNodeRef<'a>> {
+) -> FxHashSet<NamedNodeRef<'a>> {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
@@ -130,9 +131,9 @@ pub fn collect_all_superproperties<'a>(
 pub fn collect_all_subproperties<'a>(
     node: NamedNodeRef<'a>,
     graph: impl Into<DataView<'a>>,
-) -> std::collections::HashSet<NamedNodeRef<'a>> {
+) -> FxHashSet<NamedNodeRef<'a>> {
     let graph = graph.into();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = FxHashSet::default();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {

@@ -13,8 +13,9 @@
 //!
 //! This API is experimental and may change or move in any release.
 
-use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
+
+use rustc_hash::{FxHashMap, FxHasher};
 
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, Term, TermRef, Triple};
 
@@ -52,25 +53,46 @@ impl IdSlot {
     }
 }
 
+/// One subject shard in CSR layout: per-subject ranges into one flat array,
+/// avoiding a heap allocation per index entry.
+#[derive(Debug)]
+struct SubjectShard {
+    /// subject id -> (start, len) into `pairs`.
+    offsets: FxHashMap<u32, (u32, u32)>,
+    /// (predicate id, object id), grouped by subject, sorted, deduplicated.
+    pairs: Box<[(u32, u32)]>,
+}
+
+/// One (predicate, object) shard in CSR layout.
+#[derive(Debug)]
+struct PredicateObjectShard {
+    /// packed (predicate id, object id) key -> (start, len) into `subjects`.
+    offsets: FxHashMap<u64, (u32, u32)>,
+    /// subject ids, grouped by (predicate, object), sorted, deduplicated.
+    subjects: Box<[u32]>,
+}
+
+fn po_key(p: u32, o: u32) -> u64 {
+    ((p as u64) << 32) | o as u64
+}
+
 /// Experimental interned data-graph index. See the module docs.
 #[derive(Debug)]
 pub struct IndexedGraph {
     /// Term arena: id -> term. Lookups hand out `TermRef`s borrowed from here.
     terms: Box<[Term]>,
     /// term hash -> interned id(s); resolved by comparing against `terms`.
-    ids_by_hash: HashMap<u64, IdSlot>,
-    /// Shard s: subject id (s % nshards == shard) -> sorted, deduplicated
-    /// (predicate id, object id) pairs.
-    by_subject: Vec<HashMap<u32, Vec<(u32, u32)>>>,
-    /// Shard s: (predicate id, object id) (object % nshards == shard) ->
-    /// sorted, deduplicated subject ids.
-    by_predicate_object: Vec<HashMap<(u32, u32), Vec<u32>>>,
+    ids_by_hash: FxHashMap<u64, IdSlot>,
+    /// Sharded by subject id % nshards.
+    by_subject: Vec<SubjectShard>,
+    /// Sharded by object id % nshards.
+    by_predicate_object: Vec<PredicateObjectShard>,
     nshards: usize,
     len: usize,
 }
 
 fn term_hash(term: TermRef<'_>) -> u64 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = FxHasher::default();
     term.hash(&mut hasher);
     hasher.finish()
 }
@@ -79,7 +101,7 @@ impl IndexedGraph {
     /// Builds the index from a stream of triples, interning as it goes.
     pub fn from_triples(triples: impl IntoIterator<Item = Triple>) -> Self {
         let mut terms: Vec<Term> = Vec::new();
-        let mut ids_by_hash: HashMap<u64, IdSlot> = HashMap::new();
+        let mut ids_by_hash: FxHashMap<u64, IdSlot> = FxHashMap::default();
 
         let mut intern = |term: Term, terms: &mut Vec<Term>| -> u32 {
             let hash = term_hash(term.as_ref());
@@ -120,30 +142,56 @@ impl IndexedGraph {
         let nshards = 1;
 
         let build_subject_shard = |shard: usize| {
-            let mut map: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
-            for &(s, p, o) in &encoded {
-                if s as usize % nshards == shard {
-                    map.entry(s).or_default().push((p, o));
+            let mut trips: Vec<(u32, u32, u32)> = encoded
+                .iter()
+                .copied()
+                .filter(|&(s, _, _)| s as usize % nshards == shard)
+                .collect();
+            trips.sort_unstable();
+            trips.dedup();
+            let mut offsets = FxHashMap::default();
+            let mut pairs = Vec::with_capacity(trips.len());
+            let mut i = 0;
+            while i < trips.len() {
+                let s = trips[i].0;
+                let start = pairs.len() as u32;
+                while i < trips.len() && trips[i].0 == s {
+                    pairs.push((trips[i].1, trips[i].2));
+                    i += 1;
                 }
+                offsets.insert(s, (start, pairs.len() as u32 - start));
             }
-            for pairs in map.values_mut() {
-                pairs.sort_unstable();
-                pairs.dedup();
+            SubjectShard {
+                offsets,
+                pairs: pairs.into_boxed_slice(),
             }
-            map
         };
         let build_po_shard = |shard: usize| {
-            let mut map: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
-            for &(s, p, o) in &encoded {
-                if o as usize % nshards == shard {
-                    map.entry((p, o)).or_default().push(s);
+            // Reordered to (p, o, s) so sorting groups by the lookup key.
+            let mut trips: Vec<(u32, u32, u32)> = encoded
+                .iter()
+                .copied()
+                .filter(|&(_, _, o)| o as usize % nshards == shard)
+                .map(|(s, p, o)| (p, o, s))
+                .collect();
+            trips.sort_unstable();
+            trips.dedup();
+            let mut offsets = FxHashMap::default();
+            let mut subjects = Vec::with_capacity(trips.len());
+            let mut i = 0;
+            while i < trips.len() {
+                let (p, o) = (trips[i].0, trips[i].1);
+                let start = subjects.len() as u32;
+                while i < trips.len() && trips[i].0 == p && trips[i].1 == o {
+                    subjects.push(trips[i].2);
+                    i += 1;
                 }
+                offsets.insert(po_key(p, o), (start, subjects.len() as u32 - start));
             }
-            for subjects in map.values_mut() {
-                subjects.sort_unstable();
-                subjects.dedup();
+            PredicateObjectShard {
+                offsets,
+                subjects: subjects.into_boxed_slice(),
             }
-            map
         };
 
         #[cfg(not(target_family = "wasm"))]
@@ -162,11 +210,7 @@ impl IndexedGraph {
             (0..nshards).map(build_po_shard).collect(),
         );
 
-        let len = by_subject
-            .iter()
-            .flat_map(|shard| shard.values())
-            .map(|pairs| pairs.len())
-            .sum();
+        let len = by_subject.iter().map(|shard| shard.pairs.len()).sum();
 
         IndexedGraph {
             terms: terms.into_boxed_slice(),
@@ -224,9 +268,11 @@ impl IndexedGraph {
         let Some(s) = self.term_id(TermRef::from(subject)) else {
             return &[];
         };
-        self.by_subject[s as usize % self.nshards]
+        let shard = &self.by_subject[s as usize % self.nshards];
+        shard
+            .offsets
             .get(&s)
-            .map(Vec::as_slice)
+            .map(|&(start, len)| &shard.pairs[start as usize..(start + len) as usize])
             .unwrap_or(&[])
     }
 
@@ -259,10 +305,14 @@ impl IndexedGraph {
         let p = self.term_id(TermRef::from(predicate));
         let o = self.term_id(object);
         let subjects: &[u32] = match (p, o) {
-            (Some(p), Some(o)) => self.by_predicate_object[o as usize % self.nshards]
-                .get(&(p, o))
-                .map(Vec::as_slice)
-                .unwrap_or(&[]),
+            (Some(p), Some(o)) => {
+                let shard = &self.by_predicate_object[o as usize % self.nshards];
+                shard
+                    .offsets
+                    .get(&po_key(p, o))
+                    .map(|&(start, len)| &shard.subjects[start as usize..(start + len) as usize])
+                    .unwrap_or(&[])
+            }
             _ => &[],
         };
         subjects
@@ -290,8 +340,8 @@ impl IndexedGraph {
     ) -> impl Iterator<Item = (NamedOrBlankNodeRef<'a>, TermRef<'a>)> + use<'a> {
         let p = self.term_id(TermRef::from(predicate));
         self.by_subject.iter().flat_map(move |shard| {
-            shard.iter().flat_map(move |(&s, pairs)| {
-                pairs
+            shard.offsets.iter().flat_map(move |(&s, &(start, len))| {
+                shard.pairs[start as usize..(start + len) as usize]
                     .iter()
                     .filter(move |&&(pair_p, _)| Some(pair_p) == p)
                     .filter_map(move |&(_, o)| {
@@ -306,11 +356,11 @@ impl IndexedGraph {
         &self,
     ) -> impl Iterator<Item = (NamedOrBlankNodeRef<'_>, NamedNodeRef<'_>, TermRef<'_>)> {
         self.by_subject.iter().flat_map(move |shard| {
-            shard.iter().flat_map(move |(&s, pairs)| {
+            shard.offsets.iter().flat_map(move |(&s, &(start, len))| {
                 let subject = self
                     .named_or_blank_ref(s)
                     .expect("subject id is not an IRI or blank node");
-                pairs
+                shard.pairs[start as usize..(start + len) as usize]
                     .iter()
                     .map(move |&(p, o)| (subject, self.named_node_ref(p), self.term_ref(o)))
             })

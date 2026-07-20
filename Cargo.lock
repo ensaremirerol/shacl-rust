@@ -1542,6 +1542,7 @@ dependencies = [
  "oxigraph",
  "rayon",
  "regex",
+ "rustc-hash",
  "serde",
  "serde_json",
  "spargebra",
