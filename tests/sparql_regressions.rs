@@ -37,13 +37,12 @@ const SNOMED_CONSTRAINT: &str = r#"
     ] .
 "#;
 
-fn validate(shapes_ttl: &str) -> Vec<String> {
-    let data_graph = read_graph_from_string(DATA, "nt").expect("data parse");
-    let shapes_graph = read_graph_from_string(shapes_ttl, "turtle").expect("shapes parse");
-    let shapes = parse_shapes(&shapes_graph).expect("parse shapes");
-    let dataset =
-        ValidationDataset::from_graphs(data_graph, shapes_graph.clone()).expect("dataset");
-    let report = validation::validate(&dataset, &shapes);
+fn violating_focus_nodes(
+    dataset: &ValidationDataset,
+    shapes_graph: &oxigraph::model::Graph,
+) -> Vec<String> {
+    let shapes = parse_shapes(shapes_graph).expect("parse shapes");
+    let report = validation::validate(dataset, &shapes);
     let json = report.as_json();
     let mut focus: Vec<String> = json["results"]
         .as_array()
@@ -54,6 +53,26 @@ fn validate(shapes_ttl: &str) -> Vec<String> {
     focus.sort();
     focus.dedup();
     focus
+}
+
+/// Validates with both data-graph backends and asserts they agree.
+fn validate(shapes_ttl: &str) -> Vec<String> {
+    let data_graph = read_graph_from_string(DATA, "nt").expect("data parse");
+    let shapes_graph = read_graph_from_string(shapes_ttl, "turtle").expect("shapes parse");
+
+    let plain =
+        ValidationDataset::from_graphs(data_graph.clone(), shapes_graph.clone()).expect("dataset");
+    let plain_focus = violating_focus_nodes(&plain, &shapes_graph);
+
+    let indexed = ValidationDataset::from_triples_with_experimental_index(
+        data_graph.iter().map(oxigraph::model::Triple::from),
+        shapes_graph.clone(),
+    )
+    .expect("indexed dataset");
+    let indexed_focus = violating_focus_nodes(&indexed, &shapes_graph);
+
+    assert_eq!(plain_focus, indexed_focus, "backends disagree");
+    plain_focus
 }
 
 /// Case 02: core sh:targetClass + SPARQL constraint with a recursive path and
@@ -76,6 +95,39 @@ fn union_in_sparql_constraint_does_not_flag_conforming_nodes() {
         focus,
         vec!["<http://example.org/bad>".to_string()],
         "exactly ex:bad must violate"
+    );
+}
+
+/// Case 01: focus nodes selected via sh:SPARQLTarget (the production AIDAVA
+/// shape verbatim). Was: the target was never evaluated, silently validating
+/// nothing.
+#[test]
+fn sparql_target_selects_focus_nodes() {
+    let shapes = format!(
+        r#"
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        <http://codecheck#MeasurementSnomedCheck>
+            a sh:NodeShape ;
+            sh:target [
+                a sh:SPARQLTarget ;
+                sh:select """
+                    SELECT ?this WHERE {{
+                        {{ ?this <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://biomedit.ch/rdf/sphn-ontology/sphn#Measurement> }}
+                        UNION
+                        {{ ?this <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://biomedit.ch/rdf/sphn-ontology/sphn#LabResult> }} .
+                        ?this <https://biomedit.ch/rdf/sphn-ontology/sphn#hasCode> ?code .
+                        FILTER(CONTAINS(STR(?code), "snomed.info/id/")) .
+                    }}
+                """
+            ] ;
+        {SNOMED_CONSTRAINT}
+        "#
+    );
+    let focus = validate(&shapes);
+    assert_eq!(
+        focus,
+        vec!["<http://example.org/bad>".to_string()],
+        "exactly ex:bad must violate via the SPARQL-selected targets"
     );
 }
 

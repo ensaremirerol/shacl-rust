@@ -49,10 +49,25 @@ pub fn parse_targets<'a>(graph: &'a Graph, node: NamedOrBlankNodeRef<'a>) -> Vec
     }
 
     for obj in graph.objects_for_subject_predicate(node, sh::TARGET) {
-        match obj {
-            TermRef::NamedNode(nn) => targets.push(Target::Advanced(nn.into())),
-            TermRef::BlankNode(bn) => targets.push(Target::Advanced(bn.into())),
-            TermRef::Literal(_) => {}
+        let target_node: NamedOrBlankNodeRef = match obj {
+            TermRef::NamedNode(nn) => nn.into(),
+            TermRef::BlankNode(bn) => bn.into(),
+            TermRef::Literal(_) => continue,
+        };
+        // A target carrying sh:select is SPARQL-based (sh:SPARQLTarget or a
+        // SPARQL-backed custom target type); anything else stays opaque.
+        let select = graph
+            .object_for_subject_predicate(target_node, sh::SELECT)
+            .and_then(|t| match t {
+                TermRef::Literal(lit) => Some(lit.value()),
+                _ => None,
+            });
+        match select {
+            Some(query) => targets.push(Target::Sparql {
+                node: target_node,
+                query,
+            }),
+            None => targets.push(Target::Advanced(target_node)),
         }
     }
 

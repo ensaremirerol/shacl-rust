@@ -12,7 +12,6 @@ use rayon::prelude::*;
 
 use crate::{
     core::{constraints::Constraint, path::Path, shape::Shape, target::Target},
-    indexed_graph::DataView,
     utils,
     validation::{
         dataset::ValidationDataset,
@@ -26,21 +25,95 @@ use crate::{
 pub type TargetResolutionCache<'a> = FxHashMap<Target<'a>, FxHashSet<TermRef<'a>>>;
 
 pub fn build_target_cache<'a>(
-    data_graph: impl Into<DataView<'a>>,
+    validation_dataset: &'a ValidationDataset,
     shapes: &'a [Shape<'a>],
 ) -> TargetResolutionCache<'a> {
-    let data_graph = data_graph.into();
     let mut cache = TargetResolutionCache::default();
 
     for shape in shapes {
         for &target in &shape.targets {
             cache
                 .entry(target)
-                .or_insert_with(|| target.resolve_target_for_given_graph(data_graph));
+                .or_insert_with(|| resolve_target(validation_dataset, target));
         }
     }
 
     cache
+}
+
+/// Resolves a target against the dataset: SPARQL-based targets run their
+/// select query on the dataset's store; everything else resolves directly
+/// against the data graph.
+fn resolve_target<'a>(
+    validation_dataset: &'a ValidationDataset,
+    target: Target<'a>,
+) -> FxHashSet<TermRef<'a>> {
+    match target {
+        Target::Sparql { node, query } => resolve_sparql_target(validation_dataset, node, query),
+        other => other.resolve_target_for_given_graph(validation_dataset.data()),
+    }
+}
+
+/// Focus nodes of an sh:SPARQLTarget: the distinct `?this` results of the
+/// select query, anchored back into the data graph's term space. Query
+/// errors resolve to the empty set (with a warning), matching the behavior
+/// of an unresolvable advanced target.
+fn resolve_sparql_target<'a>(
+    validation_dataset: &'a ValidationDataset,
+    node: NamedOrBlankNodeRef<'a>,
+    query: &str,
+) -> FxHashSet<TermRef<'a>> {
+    use oxigraph::sparql::{QueryResults, SparqlEvaluator};
+
+    let mut focus_nodes = FxHashSet::default();
+
+    let store = match validation_dataset.store() {
+        Ok(store) => store,
+        Err(e) => {
+            log::warn!("sh:SPARQLTarget {}: store unavailable: {}", node, e);
+            return focus_nodes;
+        }
+    };
+
+    let mut evaluator = SparqlEvaluator::new();
+    for (prefix, namespace) in utils::parse_shacl_prefixes(validation_dataset.shapes_graph(), node)
+    {
+        if let Ok(with_prefix) = evaluator.clone().with_prefix(prefix, namespace) {
+            evaluator = with_prefix;
+        }
+    }
+
+    let prepared = match evaluator.parse_query(query) {
+        Ok(prepared) => prepared,
+        Err(e) => {
+            log::warn!("sh:SPARQLTarget {}: query parse error: {}", node, e);
+            return focus_nodes;
+        }
+    };
+
+    match prepared.on_store(store.as_ref()).execute() {
+        Ok(QueryResults::Solutions(solutions)) => {
+            let data = validation_dataset.data();
+            for solution in solutions.flatten() {
+                if let Some(term) = solution.get("this") {
+                    match data.canonical_term(term.as_ref()) {
+                        Some(canonical) => {
+                            focus_nodes.insert(canonical);
+                        }
+                        None => log::debug!(
+                            "sh:SPARQLTarget {}: ?this result {} not in data graph, skipped",
+                            node,
+                            term
+                        ),
+                    }
+                }
+            }
+        }
+        Ok(_) => log::warn!("sh:SPARQLTarget {}: query is not a SELECT", node),
+        Err(e) => log::warn!("sh:SPARQLTarget {}: execution error: {}", node, e),
+    }
+
+    focus_nodes
 }
 
 /// Validation behavior for individual constraint types.
@@ -62,7 +135,7 @@ pub fn validate<'a>(
     shapes: &'a [Shape<'a>],
 ) -> ValidationReport<'a> {
     let mut report = ValidationReport::new();
-    let target_cache = build_target_cache(validation_dataset.data(), shapes);
+    let target_cache = build_target_cache(validation_dataset, shapes);
     #[cfg(not(target_family = "wasm"))]
     let shape_reports: Vec<ValidationReport<'a>> = shapes
         .par_iter()
@@ -104,8 +177,7 @@ impl<'a> Shape<'a> {
             if let Some(cached_nodes) = target_cache.get(&target) {
                 focus_nodes.extend(cached_nodes.iter().copied());
             } else {
-                focus_nodes
-                    .extend(target.resolve_target_for_given_graph(validation_dataset.data()));
+                focus_nodes.extend(resolve_target(validation_dataset, target));
             }
         }
 

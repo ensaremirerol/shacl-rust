@@ -41,6 +41,14 @@ pub enum Target<'a> {
     Class(NamedOrBlankNodeRef<'a>),
     SubjectsOf(NamedNodeRef<'a>),
     ObjectsOf(NamedNodeRef<'a>),
+    /// SPARQL-based target (sh:SPARQLTarget): focus nodes are the `?this`
+    /// results of the select query. Resolved by the validator against the
+    /// dataset's SPARQL store, not by `resolve_target_for_given_graph`
+    /// (which has no query engine and returns the empty set for it).
+    Sparql {
+        node: NamedOrBlankNodeRef<'a>,
+        query: &'a str,
+    },
     Advanced(NamedOrBlankNodeRef<'a>),
 }
 
@@ -100,6 +108,7 @@ impl<'a> Target<'a> {
                 }
                 set
             }
+            Target::Sparql { .. } => FxHashSet::default(),
             Target::Advanced(_) => FxHashSet::default(),
         }
     }
@@ -108,6 +117,7 @@ impl<'a> Target<'a> {
 impl<'a> Display for Target<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Target::Sparql { node, .. } => write!(f, "SPARQLTarget({})", node),
             Target::Node(node) => write!(f, "sh:targetNode {}", node),
             Target::Class(class) => write!(f, "sh:targetClass {}", class),
             Target::SubjectsOf(property) => write!(f, "sh:targetSubjectsOf {}", property),

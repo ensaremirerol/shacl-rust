@@ -337,6 +337,13 @@ impl IndexedGraph {
             })
     }
 
+    /// Maps an equal term (however owned) back to this index's arena copy,
+    /// returning a reference with the index's lifetime. `None` when the term
+    /// does not occur in the indexed data.
+    pub fn canonical_term<'a>(&'a self, term: TermRef<'_>) -> Option<TermRef<'a>> {
+        self.term_id(term).map(|id| self.term_ref(id))
+    }
+
     /// Iterates all (subject, object) pairs with the given predicate. This is
     /// a full scan; it backs target resolution, which runs once per target.
     pub fn triples_for_predicate<'a, 'b>(
@@ -474,6 +481,39 @@ impl<'a> DataView<'a> {
                 }))
             }
             DataView::Indexed(ix) => EitherIter::B(ix.triples_for_subject(subject)),
+        }
+    }
+
+    /// Maps an equal term back to a reference with the data's lifetime.
+    /// `None` when the term does not occur in the data graph. Used to anchor
+    /// terms produced by SPARQL evaluation (owned, store-decoded) back into
+    /// the borrowed term-ref world the validator operates in.
+    pub fn canonical_term(self, term: TermRef<'_>) -> Option<TermRef<'a>> {
+        match self {
+            DataView::Indexed(ix) => ix.canonical_term(term),
+            DataView::Plain(g) => {
+                // No term interner on oxrdf's Graph: find the term via any
+                // triple it participates in and hand back that borrow.
+                let as_subject = match term {
+                    TermRef::NamedNode(n) => Some(NamedOrBlankNodeRef::from(n)),
+                    TermRef::BlankNode(b) => Some(NamedOrBlankNodeRef::from(b)),
+                    TermRef::Literal(_) => None,
+                };
+                if let Some(subject) = as_subject {
+                    if let Some(t) = g.triples_for_subject(subject).next() {
+                        return Some(t.subject.into());
+                    }
+                }
+                g.iter().find_map(|t| {
+                    if t.object == term {
+                        Some(t.object)
+                    } else if TermRef::from(t.predicate) == term {
+                        Some(TermRef::from(t.predicate))
+                    } else {
+                        None
+                    }
+                })
+            }
         }
     }
 
