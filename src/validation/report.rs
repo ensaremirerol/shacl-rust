@@ -179,11 +179,11 @@ impl<'a> ValidationReport<'a> {
         }
 
         if let Some(ref path) = result.result_path {
-            if let Some(crate::core::path::PathElement::Iri(iri)) = path.get_elements().first() {
+            if let Some(path_term) = Self::path_to_graph_term(graph, path) {
                 graph.insert(&Triple::new(
                     result_subject.clone(),
                     NamedNode::from(sh::RESULT_PATH),
-                    Term::from(NamedNode::from(*iri)),
+                    path_term,
                 ));
             }
         }
@@ -218,6 +218,89 @@ impl<'a> ValidationReport<'a> {
         }
 
         result_subject
+    }
+
+    /// Serializes a property path as its SHACL RDF structure: a lone IRI
+    /// directly, a sequence as an RDF list, and the other kinds via their
+    /// sh:*Path node. Returns `None` for empty paths.
+    fn path_to_graph_term(graph: &mut Graph, path: &crate::core::path::Path<'_>) -> Option<Term> {
+        let elements = path.get_elements();
+        match elements {
+            [] => None,
+            [single] => Some(Self::path_element_to_graph_term(graph, single)),
+            multiple => {
+                let items = multiple
+                    .iter()
+                    .map(|element| Self::path_element_to_graph_term(graph, element))
+                    .collect();
+                Some(Self::rdf_list_to_graph(graph, items))
+            }
+        }
+    }
+
+    fn path_element_to_graph_term(
+        graph: &mut Graph,
+        element: &crate::core::path::PathElement<'_>,
+    ) -> Term {
+        use crate::core::path::PathElement;
+
+        let quantified = |graph: &mut Graph, predicate, inner: &PathElement<'_>| {
+            let node = NamedOrBlankNode::from(BlankNode::default());
+            let inner_term = Self::path_element_to_graph_term(graph, inner);
+            graph.insert(&Triple::new(
+                node.clone(),
+                NamedNode::from(predicate),
+                inner_term,
+            ));
+            Term::from(node)
+        };
+
+        match element {
+            PathElement::Iri(iri) => Term::from(NamedNode::from(*iri)),
+            PathElement::Inverse(iri) => {
+                let node = NamedOrBlankNode::from(BlankNode::default());
+                graph.insert(&Triple::new(
+                    node.clone(),
+                    NamedNode::from(sh::INVERSE_PATH),
+                    Term::from(NamedNode::from(*iri)),
+                ));
+                Term::from(node)
+            }
+            PathElement::ZeroOrMore(inner) => quantified(graph, sh::ZERO_OR_MORE_PATH, inner),
+            PathElement::OneOrMore(inner) => quantified(graph, sh::ONE_OR_MORE_PATH, inner),
+            PathElement::ZeroOrOne(inner) => quantified(graph, sh::ZERO_OR_ONE_PATH, inner),
+            PathElement::Alternative(alternatives) => {
+                let node = NamedOrBlankNode::from(BlankNode::default());
+                let items = alternatives
+                    .iter()
+                    .map(|alt| Self::path_element_to_graph_term(graph, alt))
+                    .collect();
+                let list = Self::rdf_list_to_graph(graph, items);
+                graph.insert(&Triple::new(
+                    node.clone(),
+                    NamedNode::from(sh::ALTERNATIVE_PATH),
+                    list,
+                ));
+                Term::from(node)
+            }
+        }
+    }
+
+    fn rdf_list_to_graph(graph: &mut Graph, items: Vec<Term>) -> Term {
+        use oxigraph::model::vocab::rdf;
+
+        let mut tail = Term::from(NamedNode::from(rdf::NIL));
+        for item in items.into_iter().rev() {
+            let cell = NamedOrBlankNode::from(BlankNode::default());
+            graph.insert(&Triple::new(
+                cell.clone(),
+                NamedNode::from(rdf::FIRST),
+                item,
+            ));
+            graph.insert(&Triple::new(cell.clone(), NamedNode::from(rdf::REST), tail));
+            tail = Term::from(cell);
+        }
+        tail
     }
 
     pub fn as_json(&self) -> serde_json::Value {
