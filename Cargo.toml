@@ -18,7 +18,12 @@ exclude = [
 ]
 
 [workspace]
-members = ["crates/shacl-cli", "crates/shacl-wasm", "crates/shacl-mcp"]
+members = [
+    "crates/shacl-cli",
+    "crates/shacl-wasm",
+    "crates/shacl-mcp",
+    "crates/shacl-py",
+]
 
 [profile.release]
 lto = "thin"
