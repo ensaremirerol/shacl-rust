@@ -38,6 +38,17 @@ impl<'a> Validate<'a> for DatatypeConstraint<'a> {
                     .detail(format!("sh:datatype {}", self.0));
 
                 violations.push(shape.build_validation_result(builder));
+            } else if crate::utils::literal_is_ill_formed(lit) {
+                let builder = ViolationBuilder::new(focus_node)
+                    .value(value_node)
+                    .message(format!(
+                        "Value {} is an ill-formed literal for datatype {}",
+                        value_node, self.0
+                    ))
+                    .component(sh::DATATYPE_CONSTRAINT_COMPONENT)
+                    .detail(format!("sh:datatype {}", self.0));
+
+                violations.push(shape.build_validation_result(builder));
             }
         }
 

@@ -1540,6 +1540,7 @@ dependencies = [
  "criterion",
  "log",
  "oxigraph",
+ "oxsdatatypes",
  "rayon",
  "regex",
  "rustc-hash",

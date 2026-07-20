@@ -32,42 +32,40 @@ impl<'a> Validate<'a> for EqualsConstraint<'a> {
             .into_iter()
             .collect();
 
-        if path.is_some() {
-            let current_values: HashSet<TermRef<'a>> = value_nodes.iter().copied().collect();
+        // Per spec: one result for each value node absent from the other
+        // property's values, and one for each of the other property's values
+        // absent from the value nodes — the differing term as sh:value.
+        // (For node shapes value_nodes is the focus node itself, so the same
+        // symmetric difference applies.)
+        let _ = path;
+        let current_values: HashSet<TermRef<'a>> = value_nodes.iter().copied().collect();
 
-            if current_values != other_values {
+        for &value_node in &current_values {
+            if !other_values.contains(&value_node) {
                 let builder = ViolationBuilder::new(focus_node)
-                    .message(format!("Values do not equal values of property {}", self.0))
+                    .value(value_node)
+                    .message(format!(
+                        "Value is missing from values of property {}",
+                        self.0
+                    ))
                     .component(sh::EQUALS_CONSTRAINT_COMPONENT)
                     .detail(format!("sh:equals {}", self.0));
 
                 violations.push(shape.build_validation_result(builder));
             }
         }
-        if other_values.is_empty() {
-            let builder = ViolationBuilder::new(focus_node)
-                .message(format!(
-                    "Focus node does not equal (no values of property {})",
-                    self.0
-                ))
-                .component(sh::EQUALS_CONSTRAINT_COMPONENT)
-                .detail(format!("sh:equals {}", self.0));
+        for &other_value in &other_values {
+            if !current_values.contains(&other_value) {
+                let builder = ViolationBuilder::new(focus_node)
+                    .value(other_value)
+                    .message(format!(
+                        "Value of property {} is missing from the value nodes",
+                        self.0
+                    ))
+                    .component(sh::EQUALS_CONSTRAINT_COMPONENT)
+                    .detail(format!("sh:equals {}", self.0));
 
-            violations.push(shape.build_validation_result(builder));
-        } else {
-            for other_value in other_values {
-                if focus_node != other_value {
-                    let builder = ViolationBuilder::new(focus_node)
-                        .value(other_value)
-                        .message(format!(
-                            "Focus node does not equal value of property {}",
-                            self.0
-                        ))
-                        .component(sh::EQUALS_CONSTRAINT_COMPONENT)
-                        .detail(format!("sh:equals {}", self.0));
-
-                    violations.push(shape.build_validation_result(builder));
-                }
+                violations.push(shape.build_validation_result(builder));
             }
         }
 

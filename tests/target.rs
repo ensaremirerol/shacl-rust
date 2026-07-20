@@ -163,8 +163,8 @@ fn test_target_objects_of_filters_literals() {
 
     let result = target.resolve_target_for_given_graph(&graph);
 
-    // Literals should be filtered out
-    assert_eq!(result.len(), 0);
+    // Per spec, literal objects are focus nodes too (W3C targetObjectsOf-001).
+    assert_eq!(result.len(), 2);
 }
 
 #[test]
@@ -175,8 +175,9 @@ fn test_target_objects_of_mixed_objects() {
 
     let result = target.resolve_target_for_given_graph(&graph);
 
-    // Should only include Bob and CompanyX (not the literal "Alice Smith")
-    assert_eq!(result.len(), 2);
+    // Bob, CompanyX, and the literal "Alice Smith" (literals are focus
+    // nodes per spec, W3C targetObjectsOf-001).
+    assert_eq!(result.len(), 3);
 
     let bob = NamedNodeRef::new("http://example.org/Bob").unwrap();
     let company_x = NamedNodeRef::new("http://example.org/CompanyX").unwrap();

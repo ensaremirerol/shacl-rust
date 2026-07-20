@@ -26,7 +26,16 @@ impl<'a> Validate<'a> for PatternConstraint {
             let value_str = match value_node {
                 TermRef::Literal(lit) => lit.value(),
                 TermRef::NamedNode(nn) => nn.as_str(),
-                TermRef::BlankNode(_) => continue, // Skip blank nodes
+                TermRef::BlankNode(_) => {
+                    // Per spec, blank-node value nodes always violate sh:pattern.
+                    let builder = ViolationBuilder::new(focus_node)
+                        .value(value_node)
+                        .message("Blank nodes cannot match a pattern")
+                        .component(sh::PATTERN_CONSTRAINT_COMPONENT)
+                        .detail(format!("sh:pattern {}", self.pattern));
+                    violations.push(shape.build_validation_result(builder));
+                    continue;
+                }
             };
 
             if !re.is_match(value_str) {

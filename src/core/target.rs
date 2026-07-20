@@ -98,12 +98,8 @@ impl<'a> Target<'a> {
                 for subproperty in all_subproperties {
                     // Get all objects where this property is the predicate
                     for (_, object) in graph.triples_for_predicate(subproperty) {
-                        match object {
-                            TermRef::NamedNode(_) | TermRef::BlankNode(_) => {
-                                set.insert(object);
-                            }
-                            TermRef::Literal(_) => {}
-                        }
+                        // All objects are focus nodes, literals included.
+                        set.insert(object);
                     }
                 }
                 set

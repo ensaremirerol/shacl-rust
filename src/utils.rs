@@ -394,6 +394,7 @@ pub fn extract_direct_predicates<'a>(
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComparableValue<'a> {
     Number(f64),
+    DateTime(oxsdatatypes::DateTime),
     Text(&'a str),
 }
 
@@ -401,11 +402,76 @@ pub enum ComparableValue<'a> {
 /// never compare equal, less, or greater to anything.
 pub fn to_comparable(term: TermRef<'_>) -> Option<ComparableValue<'_>> {
     match term {
-        TermRef::Literal(lit) => Some(match lit.value().parse::<f64>() {
-            Ok(n) => ComparableValue::Number(n),
-            Err(_) => ComparableValue::Text(lit.value()),
-        }),
+        TermRef::Literal(lit) => {
+            if lit.datatype() == oxigraph::model::vocab::xsd::DATE_TIME {
+                if let Ok(dt) = lit.value().parse::<oxsdatatypes::DateTime>() {
+                    return Some(ComparableValue::DateTime(dt));
+                }
+            }
+            Some(match lit.value().parse::<f64>() {
+                Ok(n) => ComparableValue::Number(n),
+                Err(_) => ComparableValue::Text(lit.value()),
+            })
+        }
         _ => None,
+    }
+}
+
+/// True when a literal's lexical form is invalid for its (recognized XSD)
+/// datatype; unrecognized datatypes are assumed well-formed. SHACL requires
+/// ill-formed literals to violate sh:datatype.
+pub fn literal_is_ill_formed(lit: oxigraph::model::LiteralRef<'_>) -> bool {
+    use oxigraph::model::vocab::xsd;
+    let dt = lit.datatype();
+    let value = lit.value();
+    fn out_of_range(value: &str, min: i128, max: i128) -> bool {
+        match value.trim().parse::<i128>() {
+            Ok(n) => n < min || n > max,
+            Err(_) => true,
+        }
+    }
+    if dt == xsd::BOOLEAN {
+        value.parse::<oxsdatatypes::Boolean>().is_err()
+    } else if dt == xsd::INTEGER {
+        value.parse::<oxsdatatypes::Integer>().is_err()
+    } else if dt == xsd::BYTE {
+        out_of_range(value, i8::MIN as i128, i8::MAX as i128)
+    } else if dt == xsd::SHORT {
+        out_of_range(value, i16::MIN as i128, i16::MAX as i128)
+    } else if dt == xsd::INT {
+        out_of_range(value, i32::MIN as i128, i32::MAX as i128)
+    } else if dt == xsd::LONG {
+        out_of_range(value, i64::MIN as i128, i64::MAX as i128)
+    } else if dt == xsd::UNSIGNED_BYTE {
+        out_of_range(value, 0, u8::MAX as i128)
+    } else if dt == xsd::UNSIGNED_SHORT {
+        out_of_range(value, 0, u16::MAX as i128)
+    } else if dt == xsd::UNSIGNED_INT {
+        out_of_range(value, 0, u32::MAX as i128)
+    } else if dt == xsd::UNSIGNED_LONG {
+        out_of_range(value, 0, u64::MAX as i128)
+    } else if dt == xsd::NON_NEGATIVE_INTEGER {
+        out_of_range(value, 0, i128::MAX)
+    } else if dt == xsd::POSITIVE_INTEGER {
+        out_of_range(value, 1, i128::MAX)
+    } else if dt == xsd::NON_POSITIVE_INTEGER {
+        out_of_range(value, i128::MIN, 0)
+    } else if dt == xsd::NEGATIVE_INTEGER {
+        out_of_range(value, i128::MIN, -1)
+    } else if dt == xsd::DECIMAL {
+        value.parse::<oxsdatatypes::Decimal>().is_err()
+    } else if dt == xsd::FLOAT {
+        value.parse::<oxsdatatypes::Float>().is_err()
+    } else if dt == xsd::DOUBLE {
+        value.parse::<oxsdatatypes::Double>().is_err()
+    } else if dt == xsd::DATE_TIME {
+        value.parse::<oxsdatatypes::DateTime>().is_err()
+    } else if dt == xsd::DATE {
+        value.parse::<oxsdatatypes::Date>().is_err()
+    } else if dt == xsd::TIME {
+        value.parse::<oxsdatatypes::Time>().is_err()
+    } else {
+        false
     }
 }
 
@@ -416,6 +482,15 @@ where
     F: Fn(i32) -> bool,
 {
     match (a, b) {
+        (ComparableValue::DateTime(da), ComparableValue::DateTime(db)) => {
+            match da.partial_cmp(db) {
+                Some(std::cmp::Ordering::Less) => predicate(-1),
+                Some(std::cmp::Ordering::Equal) => predicate(0),
+                Some(std::cmp::Ordering::Greater) => predicate(1),
+                // Indeterminate under XSD timezone rules -> incomparable.
+                None => false,
+            }
+        }
         (ComparableValue::Number(na), ComparableValue::Number(nb)) => {
             if na < nb {
                 predicate(-1)
