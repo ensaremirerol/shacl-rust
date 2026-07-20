@@ -49,12 +49,187 @@ mod sh {
         NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#ValidationReport");
     pub const CONFORMS: NamedNodeRef<'_> =
         NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#conforms");
+    pub const RESULT: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#result");
+    pub const FOCUS_NODE: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#focusNode");
+    pub const RESULT_SEVERITY: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#resultSeverity");
+    pub const SOURCE_CONSTRAINT_COMPONENT: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#sourceConstraintComponent");
+    pub const RESULT_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#resultPath");
+    pub const INVERSE_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#inversePath");
+    pub const ALTERNATIVE_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#alternativePath");
+    pub const ZERO_OR_MORE_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#zeroOrMorePath");
+    pub const ONE_OR_MORE_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#oneOrMorePath");
+    pub const ZERO_OR_ONE_PATH: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#zeroOrOnePath");
+    pub const VIOLATION: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/ns/shacl#Violation");
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ExpectedOutcome {
     Conforms(bool),
     Failure,
+}
+
+/// One expected sh:result, keyed the way the report-fidelity comparison works:
+/// (focusNode, sourceConstraintComponent, resultPath, severity), messages and
+/// values ignored. Blank-node focus nodes are wildcarded as "_:" since labels
+/// are not stable across parses.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct ResultKey {
+    focus: String,
+    component: String,
+    path: String,
+    severity: String,
+}
+
+fn term_key(term: TermRef) -> String {
+    match term {
+        TermRef::BlankNode(_) => "_:".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Renders a manifest sh:resultPath structure in the same syntax
+/// `shacl_rust::Path`'s Display produces, so both sides compare as strings.
+fn render_manifest_path(graph: &Graph, term: TermRef) -> Option<String> {
+    match term {
+        TermRef::NamedNode(nn) => Some(format!("{}", nn)),
+        TermRef::BlankNode(bn) => {
+            let node = NamedOrBlankNodeRef::BlankNode(bn);
+            if let Some(inner) = graph.object_for_subject_predicate(node, sh::INVERSE_PATH) {
+                return Some(format!("^{}", render_manifest_path(graph, inner)?));
+            }
+            if let Some(inner) = graph.object_for_subject_predicate(node, sh::ALTERNATIVE_PATH) {
+                let alts = parse_rdf_list_nodes(graph, inner)?
+                    .into_iter()
+                    .map(|t| render_manifest_path(graph, t))
+                    .collect::<Option<Vec<_>>>()?;
+                return Some(format!("({})", alts.join(" | ")));
+            }
+            if let Some(inner) = graph.object_for_subject_predicate(node, sh::ZERO_OR_MORE_PATH) {
+                return Some(format!("({}*)", render_manifest_path(graph, inner)?));
+            }
+            if let Some(inner) = graph.object_for_subject_predicate(node, sh::ONE_OR_MORE_PATH) {
+                return Some(format!("({}+)", render_manifest_path(graph, inner)?));
+            }
+            if let Some(inner) = graph.object_for_subject_predicate(node, sh::ZERO_OR_ONE_PATH) {
+                return Some(format!("({}?)", render_manifest_path(graph, inner)?));
+            }
+            // RDF list -> sequence path
+            let elements = parse_rdf_list_nodes(graph, term)?
+                .into_iter()
+                .map(|t| render_manifest_path(graph, t))
+                .collect::<Option<Vec<_>>>()?;
+            Some(elements.join(" / "))
+        }
+        TermRef::Literal(_) => None,
+    }
+}
+
+fn parse_rdf_list_nodes<'a>(graph: &'a Graph, head: TermRef<'a>) -> Option<Vec<TermRef<'a>>> {
+    let mut items = Vec::new();
+    let mut current = head;
+    loop {
+        match current {
+            TermRef::NamedNode(nn) if nn == rdf::NIL => return Some(items),
+            TermRef::NamedNode(nn) => {
+                let node = NamedOrBlankNodeRef::NamedNode(nn);
+                items.push(graph.object_for_subject_predicate(node, rdf::FIRST)?);
+                current = graph.object_for_subject_predicate(node, rdf::REST)?;
+            }
+            TermRef::BlankNode(bn) => {
+                let node = NamedOrBlankNodeRef::BlankNode(bn);
+                items.push(graph.object_for_subject_predicate(node, rdf::FIRST)?);
+                current = graph.object_for_subject_predicate(node, rdf::REST)?;
+            }
+            TermRef::Literal(_) => return None,
+        }
+    }
+}
+
+fn parse_expected_results(graph: &Graph, report_node: NamedOrBlankNodeRef) -> Vec<ResultKey> {
+    let mut keys = Vec::new();
+    for result_term in graph.objects_for_subject_predicate(report_node, sh::RESULT) {
+        let result_node = match result_term {
+            TermRef::BlankNode(bn) => NamedOrBlankNodeRef::BlankNode(bn),
+            TermRef::NamedNode(nn) => NamedOrBlankNodeRef::NamedNode(nn),
+            _ => continue,
+        };
+        let focus = graph
+            .object_for_subject_predicate(result_node, sh::FOCUS_NODE)
+            .map(term_key)
+            .unwrap_or_default();
+        let component = graph
+            .object_for_subject_predicate(result_node, sh::SOURCE_CONSTRAINT_COMPONENT)
+            .map(|t| t.to_string())
+            .unwrap_or_default();
+        let severity = graph
+            .object_for_subject_predicate(result_node, sh::RESULT_SEVERITY)
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| format!("{}", sh::VIOLATION));
+        let path = graph
+            .object_for_subject_predicate(result_node, sh::RESULT_PATH)
+            .and_then(|t| render_manifest_path(graph, t))
+            .unwrap_or_default();
+        keys.push(ResultKey {
+            focus,
+            component,
+            path,
+            severity,
+        });
+    }
+    keys
+}
+
+fn actual_result_keys(report: &shacl_rust::ValidationReport) -> Vec<ResultKey> {
+    let json = report.as_json();
+    json["results"]
+        .as_array()
+        .map(|results| {
+            results
+                .iter()
+                .map(|r| {
+                    let focus_raw = r["focusNode"].as_str().unwrap_or_default();
+                    ResultKey {
+                        focus: if focus_raw.starts_with("_:") {
+                            "_:".to_string()
+                        } else {
+                            focus_raw.to_string()
+                        },
+                        component: r["sourceConstraintComponent"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        path: r["resultPath"].as_str().unwrap_or_default().to_string(),
+                        severity: r["severity"].as_str().unwrap_or_default().to_string(),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Multiset difference: (missing from actual, unexpected in actual).
+fn diff_result_sets(expected: &[ResultKey], actual: &[ResultKey]) -> (Vec<ResultKey>, Vec<ResultKey>) {
+    let mut missing = expected.to_vec();
+    let mut extra = Vec::new();
+    for a in actual {
+        if let Some(pos) = missing.iter().position(|e| e == a) {
+            missing.remove(pos);
+        } else {
+            extra.push(a.clone());
+        }
+    }
+    (missing, extra)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -64,6 +239,7 @@ struct TestCase {
     data_graph_file: PathBuf,
     shapes_graph_file: PathBuf,
     expected_outcome: ExpectedOutcome,
+    expected_results: Vec<ResultKey>,
 }
 
 fn parse_rdf_list<'a>(graph: &'a Graph, list_node: NamedOrBlankNodeRef<'a>) -> Vec<TermRef<'a>> {
@@ -330,12 +506,20 @@ fn parse_test_case(graph: &Graph, test_node: TermRef, base_file: &Path) -> Optio
         _ => return None,
     };
 
+    let expected_results = match result {
+        TermRef::BlankNode(bn) => {
+            parse_expected_results(graph, NamedOrBlankNodeRef::BlankNode(bn))
+        }
+        _ => Vec::new(),
+    };
+
     Some(TestCase {
         uri: test_subject.to_string(),
         label,
         data_graph_file,
         shapes_graph_file,
         expected_outcome,
+        expected_results,
     })
 }
 
@@ -501,6 +685,28 @@ fn test_shacl_conformance() {
                         match test_case.expected_outcome {
                             ExpectedOutcome::Conforms(expected_conforms) => {
                                 if *report.get_conforms() == expected_conforms {
+                                    // Report fidelity: the emitted result set must
+                                    // match the manifest's expected multiset keyed
+                                    // on (focus, component, path, severity).
+                                    let actual = actual_result_keys(&report);
+                                    let (missing, extra) =
+                                        diff_result_sets(&test_case.expected_results, &actual);
+                                    if !missing.is_empty() || !extra.is_empty() {
+                                        println!(
+                                            "❌ FAIL: {} (conforms ok, but result set differs: expected {}, got {})",
+                                            test_name,
+                                            test_case.expected_results.len(),
+                                            actual.len()
+                                        );
+                                        for m in missing.iter().take(4) {
+                                            println!("    missing: {:?}", m);
+                                        }
+                                        for e in extra.iter().take(4) {
+                                            println!("    extra:   {:?}", e);
+                                        }
+                                        failed += 1;
+                                        continue;
+                                    }
                                     println!(
                                         "✅ PASS: {} (conforms: {}, {} shapes, {} results)",
                                         test_name,
