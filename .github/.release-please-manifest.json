@@ -1,7 +1,7 @@
 {
-    ".": "0.2.4",
-    "crates/shacl-cli": "0.2.4",
-    "crates/shacl-mcp": "0.2.4",
-    "crates/shacl-wasm": "0.1.10",
+    ".": "0.2.5",
+    "crates/shacl-cli": "0.2.5",
+    "crates/shacl-mcp": "0.2.5",
+    "crates/shacl-wasm": "0.1.11",
     "crates/shacl-py": "0.2.4"
 }
