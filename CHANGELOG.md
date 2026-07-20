@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.5...shacl-rust-v0.2.6) (2026-07-20)
+
+
+### Features
+
+* evaluate sh:SPARQLTarget ([8fb3f11](https://github.com/ensaremirerol/shacl-rust/commit/8fb3f11ff4720eca1d11a188cd2582885f731a86))
+
+
+### Bug Fixes
+
+* real SHACL pre-binding semantics for sh:sparql constraints ([2ed271f](https://github.com/ensaremirerol/shacl-rust/commit/2ed271feda1bbe9dc8110e48e4517203f598ccab))
+
 ## [0.2.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.4...shacl-rust-v0.2.5) (2026-07-20)
 
 
