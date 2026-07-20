@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.3...shacl-rust-v0.2.4) (2026-07-20)
+
+
+### Features
+
+* Python bindings published to PyPI as shacl-rust ([c0277b8](https://github.com/ensaremirerol/shacl-rust/commit/c0277b81035f244c8dad5c5637e8bc2dcb633d44))
+* stream graph loading from readers everywhere ([a4fcbf0](https://github.com/ensaremirerol/shacl-rust/commit/a4fcbf0a3dcb6dd13c4e0bdd30b620d6ee7e1e51))
+
+
+### Bug Fixes
+
+* honor sh:ignoredProperties lists on closed shapes ([e685659](https://github.com/ensaremirerol/shacl-rust/commit/e6856596ddb9d5c8f1825c5cea25259f1e46807a))
+
 ## [0.2.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.2...shacl-rust-v0.2.3) (2026-07-20)
 
 

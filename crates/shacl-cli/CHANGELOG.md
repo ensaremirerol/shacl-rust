@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.3...shacl-cli-v0.2.4) (2026-07-20)
+
+
+### Features
+
+* stream graph loading from readers everywhere ([a4fcbf0](https://github.com/ensaremirerol/shacl-rust/commit/a4fcbf0a3dcb6dd13c4e0bdd30b620d6ee7e1e51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.3 to 0.2.4
+
 ## [0.2.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.2...shacl-cli-v0.2.3) (2026-07-20)
 
 
