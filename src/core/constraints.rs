@@ -166,6 +166,11 @@ pub struct SparqlConstraint<'a> {
     pub messages: Vec<String>,
     pub prefixes: Vec<(String, String)>,
     pub parameter_bindings: Vec<(String, TermRef<'a>)>,
+    /// True when `$this`/`?this` is used in a way (inside `BOUND()`, or as
+    /// the source of a `BIND`) that oxigraph's fast `substitute_variable`
+    /// path cannot evaluate correctly; the validator falls back to a
+    /// per-focus-node textual `VALUES` rewrite for these.
+    pub needs_text_prebinding: bool,
 }
 
 /// SHACL Constraint that can be applied to focus nodes or property values
