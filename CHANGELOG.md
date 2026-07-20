@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.4...shacl-rust-v0.2.5) (2026-07-20)
+
+
+### Performance Improvements
+
+* CSR index layout and FxHash for interning and hot sets ([2d6e780](https://github.com/ensaremirerol/shacl-rust/commit/2d6e78003873e0b610e30517008515ede545d399))
+
+
+### Miscellaneous
+
+* assert u32 term-id capacity in IndexedGraph interner ([d9199b0](https://github.com/ensaremirerol/shacl-rust/commit/d9199b040b876c185538439bd40fa26ae83c7a6b))
+
 ## [0.2.4](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.3...shacl-rust-v0.2.4) (2026-07-20)
 
 
