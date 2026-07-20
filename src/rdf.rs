@@ -60,6 +60,28 @@ fn read_graph_using_reader_with_base<R: std::io::Read>(
     Ok(graph)
 }
 
+/// Parses triples lazily from an in-memory string. The returned iterator
+/// borrows `graph_string`; errors surface as `Err` items.
+pub fn parse_triples_from_string<'a>(
+    graph_string: &'a str,
+    file_format: &str,
+) -> Result<impl Iterator<Item = Result<Triple, ShaclError>> + 'a, ShaclError> {
+    let normalized_format = normalize_rdf_format(file_format);
+    let format = RdfFormat::from_extension(&normalized_format).ok_or_else(|| {
+        ShaclError::Parse(format!(
+            "Unsupported file extension: '{}'. Supported: ttl (turtle), nt (n-triples), nq (n-quads), rdf (rdfxml/xml), jsonld (json-ld), trig",
+            file_format
+        ))
+    })?;
+    let parser = RdfParser::from_format(format)
+        .with_base_iri("http://example.org")
+        .map_err(|e| ShaclError::Parse(format!("Invalid base IRI: {}", e)))?;
+    Ok(parser.for_slice(graph_string.as_bytes()).map(|quad| {
+        quad.map(Triple::from)
+            .map_err(|e| ShaclError::Parse(format!("Failed to parse RDF data: {}", e)))
+    }))
+}
+
 pub fn serialize_graph_to_string(
     graph: &oxigraph::model::Graph,
     rdf_format: RdfFormat,

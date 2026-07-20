@@ -47,8 +47,9 @@ pub enum Target<'a> {
 impl<'a> Target<'a> {
     pub fn resolve_target_for_given_graph(
         &self,
-        graph: &'a oxigraph::model::Graph,
+        graph: impl Into<crate::indexed_graph::DataView<'a>>,
     ) -> HashSet<oxigraph::model::TermRef<'a>> {
+        let graph = graph.into();
         debug!(
             "Resolving target: {} for graph with {} triples",
             self,
@@ -65,7 +66,7 @@ impl<'a> Target<'a> {
                 let all_subclasses = crate::utils::collect_all_subclasses(*class, graph);
                 for subclass in all_subclasses {
                     graph
-                        .subjects_for_predicate_object(TYPE, subclass)
+                        .subjects_for_predicate_object(TYPE, TermRef::from(subclass))
                         .for_each(|instance| {
                             set.insert(TermRef::from(instance));
                         });
@@ -77,8 +78,8 @@ impl<'a> Target<'a> {
                 let all_subproperties = crate::utils::collect_all_subproperties(*property, graph);
                 for subproperty in all_subproperties {
                     // Get all subjects where this property is the predicate
-                    for triple in graph.triples_for_predicate(subproperty) {
-                        set.insert(triple.subject.into());
+                    for (subject, _) in graph.triples_for_predicate(subproperty) {
+                        set.insert(subject.into());
                     }
                 }
                 set
@@ -88,10 +89,10 @@ impl<'a> Target<'a> {
                 let all_subproperties = crate::utils::collect_all_subproperties(*property, graph);
                 for subproperty in all_subproperties {
                     // Get all objects where this property is the predicate
-                    for triple in graph.triples_for_predicate(subproperty) {
-                        match triple.object {
+                    for (_, object) in graph.triples_for_predicate(subproperty) {
+                        match object {
                             TermRef::NamedNode(_) | TermRef::BlankNode(_) => {
-                                set.insert(triple.object);
+                                set.insert(object);
                             }
                             TermRef::Literal(_) => {}
                         }

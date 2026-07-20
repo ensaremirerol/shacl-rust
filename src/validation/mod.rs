@@ -3,7 +3,7 @@ pub mod dataset;
 pub mod report;
 mod violation_builder;
 
-use oxigraph::model::{Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef};
+use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use std::collections::{HashMap, HashSet};
 
 #[cfg(not(target_family = "wasm"))]
@@ -11,6 +11,7 @@ use rayon::prelude::*;
 
 use crate::{
     core::{constraints::Constraint, path::Path, shape::Shape, target::Target},
+    indexed_graph::DataView,
     utils,
     validation::{
         dataset::ValidationDataset,
@@ -24,9 +25,10 @@ use crate::{
 pub type TargetResolutionCache<'a> = HashMap<Target<'a>, HashSet<TermRef<'a>>>;
 
 pub fn build_target_cache<'a>(
-    data_graph: &'a Graph,
+    data_graph: impl Into<DataView<'a>>,
     shapes: &'a [Shape<'a>],
 ) -> TargetResolutionCache<'a> {
+    let data_graph = data_graph.into();
     let mut cache = TargetResolutionCache::new();
 
     for shape in shapes {
@@ -59,7 +61,7 @@ pub fn validate<'a>(
     shapes: &'a [Shape<'a>],
 ) -> ValidationReport<'a> {
     let mut report = ValidationReport::new();
-    let target_cache = build_target_cache(validation_dataset.data_graph(), shapes);
+    let target_cache = build_target_cache(validation_dataset.data(), shapes);
     #[cfg(not(target_family = "wasm"))]
     let shape_reports: Vec<ValidationReport<'a>> = shapes
         .par_iter()
@@ -102,7 +104,7 @@ impl<'a> Shape<'a> {
                 focus_nodes.extend(cached_nodes.iter().copied());
             } else {
                 focus_nodes
-                    .extend(target.resolve_target_for_given_graph(validation_dataset.data_graph()));
+                    .extend(target.resolve_target_for_given_graph(validation_dataset.data()));
             }
         }
 
@@ -178,12 +180,12 @@ impl<'a> Shape<'a> {
     /// Resolves value nodes for the current shape.
     fn get_value_nodes(
         &'a self,
-        data_graph: &'a Graph,
+        validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
     ) -> Vec<TermRef<'a>> {
         if let Some(path) = &self.path {
             if let Some(focus_as_node) = utils::term_to_named_or_blank(focus_node) {
-                path.resolve_path_for_given_node(data_graph, &focus_as_node)
+                path.resolve_path_for_given_node(validation_dataset.data(), &focus_as_node)
             } else {
                 Vec::new()
             }
@@ -380,7 +382,7 @@ impl<'a> Shape<'a> {
             }
         }
 
-        let data_graph = validation_dataset.data_graph();
+        let data_graph = validation_dataset.data();
         for triple in data_graph.triples_for_subject(focus_as_node) {
             if !allowed_properties.contains(&triple.predicate) {
                 let builder = ViolationBuilder::new(focus_node)

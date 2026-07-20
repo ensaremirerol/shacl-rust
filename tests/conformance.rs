@@ -469,6 +469,35 @@ fn test_shacl_conformance() {
                         // Run validation
                         let report = validation::validate(&validation_dataset, &shapes);
 
+                        // Also validate through the experimental indexed
+                        // backend; both backends must agree on conformance.
+                        let indexed_dataset =
+                            match validation::dataset::ValidationDataset::from_graphs_with_experimental_index(
+                                data_graph.clone(),
+                                shapes_graph.clone(),
+                            ) {
+                                Ok(dataset) => dataset,
+                                Err(e) => {
+                                    println!(
+                                        "\u{274c} FAIL: {} (failed to create indexed validation dataset: {})",
+                                        test_name, e
+                                    );
+                                    failed += 1;
+                                    continue;
+                                }
+                            };
+                        let indexed_report = validation::validate(&indexed_dataset, &shapes);
+                        if indexed_report.get_conforms() != report.get_conforms() {
+                            println!(
+                                "\u{274c} FAIL: {} (indexed backend disagrees: plain conforms={}, indexed conforms={})",
+                                test_name,
+                                report.get_conforms(),
+                                indexed_report.get_conforms()
+                            );
+                            failed += 1;
+                            continue;
+                        }
+
                         match test_case.expected_outcome {
                             ExpectedOutcome::Conforms(expected_conforms) => {
                                 if *report.get_conforms() == expected_conforms {

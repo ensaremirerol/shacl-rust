@@ -1,13 +1,14 @@
 use oxigraph::model::{vocab::rdfs, Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use regex::Regex;
 
-use crate::{core::constraints::NodeKind, vocab::sh};
+use crate::{core::constraints::NodeKind, indexed_graph::DataView, vocab::sh};
 
-pub fn is_subclass_of(
-    node: NamedOrBlankNodeRef,
-    class: NamedOrBlankNodeRef,
-    graph: &oxigraph::model::Graph,
+pub fn is_subclass_of<'a>(
+    node: NamedOrBlankNodeRef<'a>,
+    class: NamedOrBlankNodeRef<'a>,
+    graph: impl Into<DataView<'a>>,
 ) -> bool {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
@@ -29,8 +30,9 @@ pub fn is_subclass_of(
 
 pub fn collect_all_superclasses<'a>(
     node: NamedOrBlankNodeRef<'a>,
-    graph: &'a oxigraph::model::Graph,
+    graph: impl Into<DataView<'a>>,
 ) -> std::collections::HashSet<NamedNodeRef<'a>> {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
@@ -55,14 +57,17 @@ pub fn collect_all_superclasses<'a>(
 
 pub fn collect_all_subclasses<'a>(
     node: NamedOrBlankNodeRef<'a>,
-    graph: &'a oxigraph::model::Graph,
+    graph: impl Into<DataView<'a>>,
 ) -> std::collections::HashSet<NamedNodeRef<'a>> {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
         if visited.insert(current) {
-            to_visit.extend(graph.subjects_for_predicate_object(rdfs::SUB_CLASS_OF, current));
+            to_visit.extend(
+                graph.subjects_for_predicate_object(rdfs::SUB_CLASS_OF, TermRef::from(current)),
+            );
         }
     }
     visited
@@ -77,8 +82,9 @@ pub fn collect_all_subclasses<'a>(
 pub fn is_subproperty_of<'a>(
     node: NamedOrBlankNodeRef<'a>,
     property: NamedOrBlankNodeRef<'a>,
-    graph: &'a oxigraph::model::Graph,
+    graph: impl Into<DataView<'a>>,
 ) -> bool {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
@@ -100,14 +106,18 @@ pub fn is_subproperty_of<'a>(
 
 pub fn collect_all_superproperties<'a>(
     node: NamedNodeRef<'a>,
-    graph: &'a oxigraph::model::Graph,
+    graph: impl Into<DataView<'a>>,
 ) -> std::collections::HashSet<NamedNodeRef<'a>> {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
     while let Some(current) = to_visit.pop() {
         if visited.insert(current) {
-            let objects = graph.objects_for_subject_predicate(current, rdfs::SUB_PROPERTY_OF);
+            let objects = graph.objects_for_subject_predicate(
+                NamedOrBlankNodeRef::from(current),
+                rdfs::SUB_PROPERTY_OF,
+            );
             to_visit.extend(objects.filter_map(|o| match o {
                 TermRef::NamedNode(nn) => Some(nn),
                 _ => None,
@@ -119,8 +129,9 @@ pub fn collect_all_superproperties<'a>(
 
 pub fn collect_all_subproperties<'a>(
     node: NamedNodeRef<'a>,
-    graph: &'a oxigraph::model::Graph,
+    graph: impl Into<DataView<'a>>,
 ) -> std::collections::HashSet<NamedNodeRef<'a>> {
+    let graph = graph.into();
     let mut visited = std::collections::HashSet::new();
     let mut to_visit = vec![node];
 
@@ -128,7 +139,7 @@ pub fn collect_all_subproperties<'a>(
         if visited.insert(current) {
             to_visit.extend(
                 graph
-                    .subjects_for_predicate_object(rdfs::SUB_PROPERTY_OF, current)
+                    .subjects_for_predicate_object(rdfs::SUB_PROPERTY_OF, TermRef::from(current))
                     .filter_map(|s| match s {
                         NamedOrBlankNodeRef::NamedNode(nn) => Some(nn),
                         _ => None,

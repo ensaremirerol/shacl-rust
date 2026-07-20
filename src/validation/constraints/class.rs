@@ -18,7 +18,7 @@ impl<'a> Validate<'a> for ClassConstraint<'a> {
         shape: &'a Shape<'a>,
     ) -> Result<Vec<ValidationResult<'a>>, ShaclError> {
         let mut violations = Vec::new();
-        let data_graph = validation_dataset.data_graph();
+        let data_graph = validation_dataset.data();
 
         // sh:class matches SHACL instances: the class itself plus everything
         // reachable via rdfs:subClassOf, resolved once for all value nodes.

@@ -24,7 +24,7 @@ impl<'a> Validate<'a> for DisjointConstraint<'a> {
             return Ok(violations);
         };
 
-        let data_graph = validation_dataset.data_graph();
+        let data_graph = validation_dataset.data();
 
         let other_values: HashSet<TermRef<'a>> = self
             .0

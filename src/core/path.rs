@@ -3,6 +3,8 @@ use std::{collections::HashSet, fmt::Display};
 use log::debug;
 use oxigraph::model::{NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 
+use crate::indexed_graph::DataView;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathElement<'a> {
     Iri(NamedNodeRef<'a>),
@@ -108,9 +110,10 @@ impl<'a> Path<'a> {
     /// Resolves the path for a given node in the graph, returning all reachable nodes.
     pub fn resolve_path_for_given_node(
         &self,
-        graph: &'a oxigraph::model::Graph,
+        graph: impl Into<DataView<'a>>,
         node: &oxigraph::model::NamedOrBlankNodeRef<'a>,
     ) -> Vec<oxigraph::model::TermRef<'a>> {
+        let graph = graph.into();
         debug!("Resolving path for node {:?} with path: {}", node, self);
         let mut current_nodes: Vec<TermRef<'a>> = vec![(*node).into()];
 
@@ -139,7 +142,7 @@ impl<'a> Path<'a> {
     /// Emits every node reachable from `subject` via `element`. May emit
     /// duplicates; callers deduplicate.
     fn expand(
-        graph: &'a oxigraph::model::Graph,
+        graph: DataView<'a>,
         element: &PathElement<'a>,
         subject: NamedOrBlankNodeRef<'a>,
         emit: &mut dyn FnMut(TermRef<'a>),
@@ -178,7 +181,7 @@ impl<'a> Path<'a> {
     /// Transitive closure of `element` starting at `start`, excluding `start`
     /// itself. Each reachable node is emitted exactly once.
     fn expand_transitive(
-        graph: &'a oxigraph::model::Graph,
+        graph: DataView<'a>,
         element: &PathElement<'a>,
         start: NamedOrBlankNodeRef<'a>,
         emit: &mut dyn FnMut(TermRef<'a>),

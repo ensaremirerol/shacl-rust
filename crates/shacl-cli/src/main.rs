@@ -73,6 +73,11 @@ enum Commands {
         /// Disable progress output
         #[arg(long, visible_alias = "quite")]
         quiet: bool,
+
+        /// EXPERIMENTAL: load the data graph into an interned parallel index
+        /// instead of an oxigraph Graph (faster and leaner on large graphs)
+        #[arg(long)]
+        experimental_index: bool,
     },
 
     /// Show information about SHACL shapes
@@ -128,6 +133,7 @@ fn main() -> Result<(), ShaclError> {
             output,
             output_format,
             quiet: _,
+            experimental_index,
         } => {
             info!("Validating {} data file(s)", data_files.len());
             info!("Using shapes: {}", shapes_file.display());
@@ -138,6 +144,7 @@ fn main() -> Result<(), ShaclError> {
                 shapes_format,
                 output,
                 &output_format,
+                experimental_index,
             )
         }
         Commands::Info {
@@ -274,6 +281,7 @@ fn info_command(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_command(
     shapes_file: PathBuf,
     data_files: Vec<PathBuf>,
@@ -281,7 +289,18 @@ fn validate_command(
     shapes_format: Option<String>,
     output: Option<PathBuf>,
     output_format: &str,
+    experimental_index: bool,
 ) -> Result<(), ShaclError> {
+    if experimental_index {
+        return validate_command_indexed(
+            shapes_file,
+            data_files,
+            data_format,
+            shapes_format,
+            output,
+            output_format,
+        );
+    }
     let data_graphs_results: Vec<Result<(PathBuf, oxigraph::model::Graph), ShaclError>> =
         data_files
             .into_par_iter()
@@ -346,6 +365,14 @@ fn validate_command(
 
     let report = validate(&validation_dataset, &shapes);
 
+    emit_report(&report, output, output_format)
+}
+
+fn emit_report(
+    report: &shacl_rust::ValidationReport<'_>,
+    output: Option<PathBuf>,
+    output_format: &str,
+) -> Result<(), ShaclError> {
     // Determine output format and generate report
     let output_text = match output_format {
         "text" => {
@@ -397,6 +424,73 @@ fn validate_command(
     }
 
     Ok(())
+}
+
+fn validate_command_indexed(
+    shapes_file: PathBuf,
+    data_files: Vec<PathBuf>,
+    data_format: Option<String>,
+    shapes_format: Option<String>,
+    output: Option<PathBuf>,
+    output_format: &str,
+) -> Result<(), ShaclError> {
+    // Read all data files up front; the streaming parsers borrow the contents.
+    let mut contents: Vec<(PathBuf, String, String)> = Vec::new();
+    for data_file in data_files {
+        let effective_format = data_format
+            .as_deref()
+            .or_else(|| data_file.extension().and_then(|ext| ext.to_str()))
+            .ok_or_else(|| {
+                ShaclError::Parse(format!(
+                    "Could not infer RDF format for '{}'. Please provide --data-format.",
+                    data_file.display()
+                ))
+            })?
+            .to_string();
+        let content = std::fs::read_to_string(path_to_str(&data_file)?).map_err(|e| {
+            ShaclError::Io(format!(
+                "Failed to read graph file '{}': {}",
+                data_file.display(),
+                e
+            ))
+        })?;
+        contents.push((data_file, effective_format, content));
+    }
+
+    let shapes_graph = read_graph_from_file(&shapes_file, shapes_format.as_deref())?;
+    info!("Shapes graph loaded with {} triples", shapes_graph.len());
+
+    // Stream every file straight into the index; the first parse error wins.
+    let parse_error: std::cell::RefCell<Option<ShaclError>> = std::cell::RefCell::new(None);
+    let mut parsers = Vec::new();
+    for (path, format, content) in &contents {
+        parsers.push((path, rdf::parse_triples_from_string(content, format)?));
+    }
+    let triples = parsers
+        .into_iter()
+        .flat_map(|(_path, iter)| iter)
+        .filter_map(|result| match result {
+            Ok(triple) => Some(triple),
+            Err(e) => {
+                parse_error.borrow_mut().get_or_insert(e);
+                None
+            }
+        });
+    let validation_dataset =
+        ValidationDataset::from_triples_with_experimental_index(triples, shapes_graph)?;
+    if let Some(e) = parse_error.into_inner() {
+        return Err(e);
+    }
+    info!(
+        "Data graph indexed with {} triples (experimental backend)",
+        validation_dataset.data().len()
+    );
+
+    let shapes = parser::parse_shapes(validation_dataset.shapes_graph())?;
+    info!("Parsed {} shapes", shapes.len());
+
+    let report = validate(&validation_dataset, &shapes);
+    emit_report(&report, output, output_format)
 }
 
 fn read_graph_from_file(

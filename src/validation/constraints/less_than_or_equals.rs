@@ -24,7 +24,7 @@ impl<'a> Validate<'a> for LessThanOrEqualsConstraint<'a> {
 
         let mut violations = Vec::new();
 
-        let data_graph = validation_dataset.data_graph();
+        let data_graph = validation_dataset.data();
 
         let other_values: HashSet<TermRef<'a>> = self
             .0
