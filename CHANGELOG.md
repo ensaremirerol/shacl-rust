@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.2...shacl-rust-v0.2.3) (2026-07-20)
+
+
+### Features
+
+* experimental interned data-graph index backend ([7b14624](https://github.com/ensaremirerol/shacl-rust/commit/7b146245ddfd9ea9ab4a15635815464136b0545b))
+
+
+### Performance Improvements
+
+* stream parsed quads directly into the graph ([cfd5050](https://github.com/ensaremirerol/shacl-rust/commit/cfd5050194aa0003087e026e8f63d638f1cc0f65))
+
 ## [0.2.2](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.1...shacl-rust-v0.2.2) (2026-07-19)
 
 

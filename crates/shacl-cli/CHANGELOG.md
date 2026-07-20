@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.3](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.2...shacl-cli-v0.2.3) (2026-07-20)
+
+
+### Features
+
+* experimental interned data-graph index backend ([7b14624](https://github.com/ensaremirerol/shacl-rust/commit/7b146245ddfd9ea9ab4a15635815464136b0545b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.2 to 0.2.3
+
 ## [0.2.2](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.1...shacl-cli-v0.2.2) (2026-07-19)
 
 
