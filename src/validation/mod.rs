@@ -385,6 +385,8 @@ impl<'a> Shape<'a> {
         let data_graph = validation_dataset.data();
         for triple in data_graph.triples_for_subject(focus_as_node) {
             if !allowed_properties.contains(&triple.predicate) {
+                // Per spec, the result path is the offending predicate and the
+                // value is the triple's object.
                 let builder = ViolationBuilder::new(focus_node)
                     .message(format!(
                         "Property {} is not allowed (closed shape)",
@@ -392,6 +394,10 @@ impl<'a> Shape<'a> {
                     ))
                     .component(sh::CLOSED_CONSTRAINT_COMPONENT)
                     .detail(format!("Unexpected property: {}", triple.predicate))
+                    .result_path(
+                        Path::new()
+                            .add_element(crate::core::path::PathElement::Iri(triple.predicate)),
+                    )
                     .value(triple.object);
 
                 report.add_result(self.build_validation_result(builder));
@@ -671,7 +677,7 @@ impl<'a> Shape<'a> {
             .with_source_shape_name(self.name.clone())
             .with_source_constraint_component(builder.constraint_component)
             .with_constraint_detail(builder.constraint_detail)
-            .with_result_path(self.path.clone())
+            .with_result_path(builder.result_path.or_else(|| self.path.clone()))
             .with_value(builder.value)
             .with_messages(Some(messages))
             .with_trace(Some(builder.trace))

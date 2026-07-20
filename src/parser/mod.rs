@@ -214,8 +214,11 @@ fn parse_closed_constraint<'a>(
 
         // Parse sh:ignoredProperties (should be an RDF list)
         if let Some(list_node) = graph.object_for_subject_predicate(node, sh::IGNORED_PROPERTIES) {
+            // SHACL lists are almost always blank nodes in serialized graphs;
+            // rdf:nil (a named node) covers the empty list.
             let list_node_ref = match list_node {
                 TermRef::NamedNode(nn) => NamedOrBlankNodeRef::NamedNode(nn),
+                TermRef::BlankNode(bn) => NamedOrBlankNodeRef::BlankNode(bn),
                 _ => return Some(ClosedConstraint { ignored_properties }), // Invalid ignoredProperties definition, treat as empty
             };
             ignored_properties = parse_rdf_list(graph, list_node_ref)
