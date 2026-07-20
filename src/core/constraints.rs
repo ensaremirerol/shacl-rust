@@ -169,8 +169,12 @@ pub struct SparqlConstraint<'a> {
     /// True when `$this`/`?this` is used in a way (inside `BOUND()`, or as
     /// the source of a `BIND`) that oxigraph's fast `substitute_variable`
     /// path cannot evaluate correctly; the validator falls back to a
-    /// per-focus-node textual `VALUES` rewrite for these.
+    /// per-focus-node AST rewrite for these.
     pub needs_text_prebinding: bool,
+    /// Variable names in the query's top-level projection (empty for ASK).
+    /// oxigraph can only `substitute_variable` projected variables; anything
+    /// else that needs pre-binding goes through the AST-rewrite path.
+    pub projected_vars: Vec<String>,
 }
 
 /// SHACL Constraint that can be applied to focus nodes or property values

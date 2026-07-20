@@ -47,21 +47,24 @@ fn query_mentions_variable(query: &str, name: &str) -> bool {
     false
 }
 
-/// Rewrites a query so that `$this` behaves as genuinely pre-bound, for the
-/// constructs oxigraph's `substitute_variable` cannot evaluate (see
-/// `SparqlConstraint::needs_text_prebinding`): `BOUND($this)` becomes `true`
-/// (a pre-bound variable is bound by definition, in every scope), and other
-/// expression references to `$this` are replaced by the focus-node constant.
-/// Pattern positions keep the variable and are handled by
-/// `substitute_variable`, which evaluates them correctly. Returns `None` when
-/// the query doesn't parse (the caller then surfaces the parse error through
-/// the normal path).
-fn rewrite_this_prebinding(
+/// Rewrites a query so the given pre-bound variables behave as genuinely
+/// bound constants, covering the constructs oxigraph's `substitute_variable`
+/// cannot: non-projected variables (including everything in an ASK, whose
+/// projection is empty), `BOUND($var)` (becomes `true` — a pre-bound variable
+/// is bound in every scope by definition), and expressions deriving values
+/// from a pre-bound variable. Constants are inlined into expression, triple-
+/// pattern, property-path, and predicate positions. Blank-node terms are
+/// excluded (a blank node in query syntax is a fresh scoped variable, not a
+/// reference) — those stay variables for `substitute_variable` to handle when
+/// projected. Returns `None` when the query doesn't parse (the caller then
+/// surfaces the parse error through the normal path).
+fn rewrite_prebindings(
     query: &str,
     prefixes: &[(String, String)],
-    focus_node: TermRef<'_>,
+    binding_list: &[(&str, Term)],
 ) -> Option<String> {
     use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, OrderExpression};
+    use spargebra::term::{NamedNodePattern, TermPattern, TriplePattern};
 
     let mut parser = spargebra::SparqlParser::new();
     for (prefix, namespace) in prefixes {
@@ -74,34 +77,72 @@ fn rewrite_this_prebinding(
     }
     let parsed = parser.parse_query(query).ok()?;
 
-    // Blank nodes have no expression form in SPARQL; for them only the
-    // BOUND() rewrite applies (comparing a blank-node focus in a FILTER is
-    // not expressible anyway).
-    let constant: Option<Expression> = match focus_node {
-        TermRef::NamedNode(n) => Some(Expression::NamedNode(n.into_owned())),
-        TermRef::Literal(l) => Some(Expression::Literal(l.into_owned())),
-        TermRef::BlankNode(_) => None,
+    struct Bindings {
+        map: Vec<(spargebra::term::Variable, Term)>,
+    }
+    impl Bindings {
+        fn get(&self, v: &spargebra::term::Variable) -> Option<&Term> {
+            self.map.iter().find(|(var, _)| var == v).map(|(_, t)| t)
+        }
+        fn expr(&self, v: &spargebra::term::Variable) -> Option<Expression> {
+            match self.get(v)? {
+                Term::NamedNode(n) => Some(Expression::NamedNode(n.clone())),
+                Term::Literal(l) => Some(Expression::Literal(l.clone())),
+                _ => None,
+            }
+        }
+        fn term(&self, v: &spargebra::term::Variable) -> Option<TermPattern> {
+            match self.get(v)? {
+                Term::NamedNode(n) => Some(TermPattern::NamedNode(n.clone())),
+                Term::Literal(l) => Some(TermPattern::Literal(l.clone())),
+                _ => None,
+            }
+        }
+        fn named(&self, v: &spargebra::term::Variable) -> Option<NamedNodePattern> {
+            match self.get(v)? {
+                Term::NamedNode(n) => Some(NamedNodePattern::NamedNode(n.clone())),
+                _ => None,
+            }
+        }
+    }
+    let b = Bindings {
+        map: binding_list
+            .iter()
+            .filter(|(_, t)| !matches!(t, Term::BlankNode(_)))
+            .map(|(name, t)| (spargebra::term::Variable::new_unchecked(*name), t.clone()))
+            .collect(),
     };
-    let this = spargebra::term::Variable::new_unchecked("this");
+    fn rewrite_term(tp: TermPattern, b: &Bindings) -> TermPattern {
+        match tp {
+            TermPattern::Variable(v) => match b.term(&v) {
+                Some(c) => c,
+                None => TermPattern::Variable(v),
+            },
+            other => other,
+        }
+    }
 
-    fn rewrite_expr(
-        expr: Expression,
-        this: &spargebra::term::Variable,
-        constant: &Option<Expression>,
-    ) -> Expression {
-        let rec = |e: Box<Expression>| Box::new(rewrite_expr(*e, this, constant));
+    fn rewrite_named(np: NamedNodePattern, b: &Bindings) -> NamedNodePattern {
+        match np {
+            NamedNodePattern::Variable(v) => match b.named(&v) {
+                Some(c) => c,
+                None => NamedNodePattern::Variable(v),
+            },
+            other => other,
+        }
+    }
+
+    fn rewrite_expr(expr: Expression, b: &Bindings) -> Expression {
+        let rec = |e: Box<Expression>| Box::new(rewrite_expr(*e, b));
         match expr {
-            Expression::Bound(v) if v == *this => {
+            Expression::Bound(v) if b.get(&v).is_some() => {
                 Expression::Literal(oxigraph::model::Literal::from(true))
             }
-            Expression::Variable(v) if v == *this => match constant {
-                Some(c) => c.clone(),
+            Expression::Variable(v) => match b.expr(&v) {
+                Some(c) => c,
                 None => Expression::Variable(v),
             },
-            Expression::Variable(_)
-            | Expression::NamedNode(_)
-            | Expression::Literal(_)
-            | Expression::Bound(_) => expr,
+            Expression::NamedNode(_) | Expression::Literal(_) | Expression::Bound(_) => expr,
             Expression::Or(a, b) => Expression::Or(rec(a), rec(b)),
             Expression::And(a, b) => Expression::And(rec(a), rec(b)),
             Expression::Equal(a, b) => Expression::Equal(rec(a), rec(b)),
@@ -112,9 +153,7 @@ fn rewrite_this_prebinding(
             Expression::LessOrEqual(a, b) => Expression::LessOrEqual(rec(a), rec(b)),
             Expression::In(a, list) => Expression::In(
                 rec(a),
-                list.into_iter()
-                    .map(|e| rewrite_expr(e, this, constant))
-                    .collect(),
+                list.into_iter().map(|e| rewrite_expr(e, b)).collect(),
             ),
             Expression::Add(a, b) => Expression::Add(rec(a), rec(b)),
             Expression::Subtract(a, b) => Expression::Subtract(rec(a), rec(b)),
@@ -123,34 +162,40 @@ fn rewrite_this_prebinding(
             Expression::UnaryPlus(e) => Expression::UnaryPlus(rec(e)),
             Expression::UnaryMinus(e) => Expression::UnaryMinus(rec(e)),
             Expression::Not(e) => Expression::Not(rec(e)),
-            Expression::Exists(p) => {
-                Expression::Exists(Box::new(rewrite_pattern(*p, this, constant)))
-            }
+            Expression::Exists(p) => Expression::Exists(Box::new(rewrite_pattern(*p, b))),
             Expression::If(a, b, c) => Expression::If(rec(a), rec(b), rec(c)),
-            Expression::Coalesce(list) => Expression::Coalesce(
-                list.into_iter()
-                    .map(|e| rewrite_expr(e, this, constant))
-                    .collect(),
-            ),
-            Expression::FunctionCall(f, args) => Expression::FunctionCall(
-                f,
-                args.into_iter()
-                    .map(|e| rewrite_expr(e, this, constant))
-                    .collect(),
-            ),
+            Expression::Coalesce(list) => {
+                Expression::Coalesce(list.into_iter().map(|e| rewrite_expr(e, b)).collect())
+            }
+            Expression::FunctionCall(f, args) => {
+                Expression::FunctionCall(f, args.into_iter().map(|e| rewrite_expr(e, b)).collect())
+            }
         }
     }
 
-    fn rewrite_pattern(
-        pattern: GraphPattern,
-        this: &spargebra::term::Variable,
-        constant: &Option<Expression>,
-    ) -> GraphPattern {
-        let rec = |p: Box<GraphPattern>| Box::new(rewrite_pattern(*p, this, constant));
+    fn rewrite_pattern(pattern: GraphPattern, b: &Bindings) -> GraphPattern {
+        let rec = |p: Box<GraphPattern>| Box::new(rewrite_pattern(*p, b));
         match pattern {
-            GraphPattern::Bgp { .. } | GraphPattern::Path { .. } | GraphPattern::Values { .. } => {
-                pattern
-            }
+            GraphPattern::Bgp { patterns } => GraphPattern::Bgp {
+                patterns: patterns
+                    .into_iter()
+                    .map(|t: TriplePattern| TriplePattern {
+                        subject: rewrite_term(t.subject, b),
+                        predicate: rewrite_named(t.predicate, b),
+                        object: rewrite_term(t.object, b),
+                    })
+                    .collect(),
+            },
+            GraphPattern::Path {
+                subject,
+                path,
+                object,
+            } => GraphPattern::Path {
+                subject: rewrite_term(subject, b),
+                path,
+                object: rewrite_term(object, b),
+            },
+            GraphPattern::Values { .. } => pattern,
             GraphPattern::Join { left, right } => GraphPattern::Join {
                 left: rec(left),
                 right: rec(right),
@@ -162,14 +207,14 @@ fn rewrite_this_prebinding(
             } => GraphPattern::LeftJoin {
                 left: rec(left),
                 right: rec(right),
-                expression: expression.map(|e| rewrite_expr(e, this, constant)),
+                expression: expression.map(|e| rewrite_expr(e, b)),
             },
             GraphPattern::Lateral { left, right } => GraphPattern::Lateral {
                 left: rec(left),
                 right: rec(right),
             },
             GraphPattern::Filter { expr, inner } => GraphPattern::Filter {
-                expr: rewrite_expr(expr, this, constant),
+                expr: rewrite_expr(expr, b),
                 inner: rec(inner),
             },
             GraphPattern::Union { left, right } => GraphPattern::Union {
@@ -187,7 +232,7 @@ fn rewrite_this_prebinding(
             } => GraphPattern::Extend {
                 inner: rec(inner),
                 variable,
-                expression: rewrite_expr(expression, this, constant),
+                expression: rewrite_expr(expression, b),
             },
             GraphPattern::Minus { left, right } => GraphPattern::Minus {
                 left: rec(left),
@@ -198,12 +243,8 @@ fn rewrite_this_prebinding(
                 expression: expression
                     .into_iter()
                     .map(|oe| match oe {
-                        OrderExpression::Asc(e) => {
-                            OrderExpression::Asc(rewrite_expr(e, this, constant))
-                        }
-                        OrderExpression::Desc(e) => {
-                            OrderExpression::Desc(rewrite_expr(e, this, constant))
-                        }
+                        OrderExpression::Asc(e) => OrderExpression::Asc(rewrite_expr(e, b)),
+                        OrderExpression::Desc(e) => OrderExpression::Desc(rewrite_expr(e, b)),
                     })
                     .collect(),
             },
@@ -244,7 +285,7 @@ fn rewrite_this_prebinding(
                                     distinct,
                                 } => AggregateExpression::FunctionCall {
                                     name,
-                                    expr: rewrite_expr(expr, this, constant),
+                                    expr: rewrite_expr(expr, b),
                                     distinct,
                                 },
                             },
@@ -271,7 +312,7 @@ fn rewrite_this_prebinding(
             base_iri,
         } => spargebra::Query::Select {
             dataset,
-            pattern: rewrite_pattern(pattern, &this, &constant),
+            pattern: rewrite_pattern(pattern, &b),
             base_iri,
         },
         spargebra::Query::Ask {
@@ -280,7 +321,7 @@ fn rewrite_this_prebinding(
             base_iri,
         } => spargebra::Query::Ask {
             dataset,
-            pattern: rewrite_pattern(pattern, &this, &constant),
+            pattern: rewrite_pattern(pattern, &b),
             base_iri,
         },
         other => other,
@@ -374,66 +415,84 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
         ));
         base_bindings.push(("currentShape".to_string(), format!("{}", shape.node)));
 
-        // Constants that don't depend on the current value node: parsed and
-        // substituted once per call when the fast path applies. Mentions are
-        // checked against the text actually parsed (the rewrite may have
-        // eliminated $this entirely), since substituting a variable the query
-        // doesn't contain fails the whole execution.
-        let apply_constant_substitutions = |mut prepared: oxigraph::sparql::PreparedSparqlQuery,
-                                            text: &str| {
-            if query_mentions_variable(text, "this") {
-                prepared = prepared
-                    .substitute_variable(Variable::new_unchecked("this"), focus_node.into_owned());
-            }
-            if query_mentions_variable(text, "shapesGraph") {
-                prepared = prepared.substitute_variable(
-                    Variable::new_unchecked("shapesGraph"),
-                    NamedNode::new_unchecked(dataset::SHAPES_GRAPH_IRI),
-                );
-            }
-            if query_mentions_variable(text, "currentShape") {
-                prepared = prepared.substitute_variable(
-                    Variable::new_unchecked("currentShape"),
-                    Term::from(shape.node.into_owned()),
-                );
-            }
-            if let Some(path) = path {
-                if let Some(predicate) = utils::extract_direct_predicates(path).into_iter().next() {
-                    if query_mentions_variable(text, "PATH") {
-                        prepared = prepared.substitute_variable(
-                            Variable::new_unchecked("PATH"),
-                            predicate.into_owned(),
-                        );
-                    }
-                }
-            }
-            for (name, value) in &self.parameter_bindings {
-                if query_mentions_variable(text, name) {
-                    if let Ok(var) = Variable::new(name.as_str()) {
-                        prepared = prepared.substitute_variable(var, value.into_owned());
-                    }
-                }
-            }
-            prepared
-        };
-
-        if let Some(path) = path {
-            if let Some(predicate) = utils::extract_direct_predicates(path).into_iter().next() {
-                base_bindings.push(("PATH".to_string(), format!("{}", predicate)));
-            }
+        let path_predicate =
+            path.and_then(|p| utils::extract_direct_predicates(p).into_iter().next());
+        if let Some(predicate) = path_predicate {
+            base_bindings.push(("PATH".to_string(), format!("{}", predicate)));
         }
         for (name, value) in &self.parameter_bindings {
             base_bindings.push((name.to_string(), format!("{}", value)));
         }
 
-        // Fast path: the query is parsed once per call and `$this` is
-        // pre-bound via variable substitution. Skipped when the query needs
-        // text-based pre-binding (see `needs_text_prebinding`'s doc comment).
-        let prepared_base = if self.needs_text_prebinding {
+        // oxigraph's `substitute_variable` only works for variables in the
+        // query's projection (an ASK projects nothing). A mentioned pre-bound
+        // variable outside the projection forces the AST-rewrite path.
+        let is_projected = |name: &str| self.projected_vars.iter().any(|v| v == name);
+        let mut prebound_names: Vec<&str> =
+            vec!["this", "value", "PATH", "shapesGraph", "currentShape"];
+        for (name, _) in &self.parameter_bindings {
+            prebound_names.push(name.as_str());
+        }
+        let fast_path_ok = !self.needs_text_prebinding
+            && prebound_names
+                .iter()
+                .all(|name| !query_mentions_variable(query_text, name) || is_projected(name));
+
+        // Term forms of every pre-bound constant that the query mentions,
+        // excluding the per-target `value` (added per iteration).
+        let mut constant_terms: Vec<(&str, Term)> = Vec::new();
+        if query_mentions_variable(query_text, "this") {
+            constant_terms.push(("this", focus_node.into_owned()));
+        }
+        if query_mentions_variable(query_text, "shapesGraph") {
+            constant_terms.push((
+                "shapesGraph",
+                NamedNode::new_unchecked(dataset::SHAPES_GRAPH_IRI).into(),
+            ));
+        }
+        if query_mentions_variable(query_text, "currentShape") {
+            constant_terms.push(("currentShape", Term::from(shape.node.into_owned())));
+        }
+        if let Some(predicate) = path_predicate {
+            if query_mentions_variable(query_text, "PATH") {
+                constant_terms.push(("PATH", predicate.into_owned().into()));
+            }
+        }
+        for (name, value) in &self.parameter_bindings {
+            if query_mentions_variable(query_text, name) {
+                constant_terms.push((name.as_str(), value.into_owned()));
+            }
+        }
+
+        // Substitutes any binding the rewrite could not inline (blank nodes),
+        // when the variable survived into the text and is substitutable.
+        let substitute_blank_leftovers = |mut prepared: oxigraph::sparql::PreparedSparqlQuery,
+                                          terms: &[(&str, Term)],
+                                          text: &str| {
+            for (name, term) in terms {
+                if matches!(term, Term::BlankNode(_))
+                    && is_projected(name)
+                    && query_mentions_variable(text, name)
+                {
+                    prepared =
+                        prepared.substitute_variable(Variable::new_unchecked(*name), term.clone());
+                }
+            }
+            prepared
+        };
+
+        // Fast path: parse once per call, pre-bind via variable substitution.
+        let prepared_base = if !fast_path_ok {
             None
         } else {
             match evaluator.clone().parse_query(query_text) {
-                Ok(prepared) => Some(apply_constant_substitutions(prepared, query_text)),
+                Ok(mut prepared) => {
+                    for (name, term) in &constant_terms {
+                        prepared = prepared
+                            .substitute_variable(Variable::new_unchecked(*name), term.clone());
+                    }
+                    Some(prepared)
+                }
                 Err(error) => {
                     for maybe_value in run_once_targets {
                         let mut builder = ViolationBuilder::new(focus_node)
@@ -460,15 +519,22 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
             let mut prepared = match &prepared_base {
                 Some(prepared_base) => prepared_base.clone(),
                 None => {
-                    // Slow path: rewrite the AST per focus node so BOUND($this)
-                    // and $this-derived expressions see the pre-binding, then
-                    // apply the pattern-position substitutions on the rewritten
-                    // query as usual.
+                    // Slow path: inline every pre-bound constant into the AST
+                    // per target, so non-projected variables, BOUND(), and
+                    // derived expressions all see the binding.
+                    let mut term_bindings = constant_terms.clone();
+                    if let Some(value) = maybe_value {
+                        if query_mentions_variable(query_text, "value") {
+                            term_bindings.push(("value", value.into_owned()));
+                        }
+                    }
                     let bound_query =
-                        rewrite_this_prebinding(query_text, &self.prefixes, focus_node)
+                        rewrite_prebindings(query_text, &self.prefixes, &term_bindings)
                             .unwrap_or_else(|| query_text.to_string());
                     match evaluator.clone().parse_query(&bound_query) {
-                        Ok(prepared) => apply_constant_substitutions(prepared, &bound_query),
+                        Ok(prepared) => {
+                            substitute_blank_leftovers(prepared, &term_bindings, &bound_query)
+                        }
                         Err(error) => {
                             let mut builder = ViolationBuilder::new(focus_node)
                                 .message(format!("SPARQL parse error: {}", error))
@@ -486,16 +552,21 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                     }
                 }
             };
-            if let Some(value) = maybe_value {
-                if query_mentions_variable(query_text, "value") {
-                    prepared = prepared
-                        .substitute_variable(Variable::new_unchecked("value"), value.into_owned());
+            if prepared_base.is_some() {
+                if let Some(value) = maybe_value {
+                    if query_mentions_variable(query_text, "value") {
+                        prepared = prepared.substitute_variable(
+                            Variable::new_unchecked("value"),
+                            value.into_owned(),
+                        );
+                    }
                 }
             }
 
             let results = prepared.on_store(store.as_ref()).execute();
             match (&self.executable, results) {
                 (SparqlExecutable::Select(_), Ok(QueryResults::Solutions(solutions))) => {
+                    let data = validation_dataset.data();
                     for solution_result in solutions {
                         let Ok(solution) = solution_result else {
                             continue;
@@ -506,11 +577,33 @@ impl<'a> Validate<'a> for SparqlConstraint<'a> {
                             .map(|(var, term)| (var.as_str().to_string(), term.to_string()))
                             .collect();
 
+                        // Per SHACL-SPARQL, a ?path solution binding becomes the
+                        // result's sh:resultPath and a ?value binding its
+                        // sh:value; both are anchored back into the data
+                        // graph's term space.
+                        let solution_path = solution
+                            .get("path")
+                            .and_then(|t| data.canonical_term(t.as_ref()))
+                            .and_then(|t| match t {
+                                TermRef::NamedNode(nn) => Some(nn),
+                                _ => None,
+                            });
+                        let solution_value = solution
+                            .get("value")
+                            .and_then(|t| data.canonical_term(t.as_ref()));
+
                         let mut builder = ViolationBuilder::new(focus_node)
                             .component(constraint_component(self))
                             .detail(format!("SPARQL SELECT: {}", query_text.replace('\n', " ")));
 
-                        if let Some(value) = maybe_value {
+                        if let Some(p) = solution_path {
+                            builder = builder.result_path(
+                                Path::new().add_element(crate::core::path::PathElement::Iri(p)),
+                            );
+                        }
+                        if let Some(v) = solution_value {
+                            builder = builder.value(v);
+                        } else if let Some(value) = maybe_value {
                             builder = builder.value(value);
                         }
 

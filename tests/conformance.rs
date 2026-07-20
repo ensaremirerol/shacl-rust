@@ -219,7 +219,10 @@ fn actual_result_keys(report: &shacl_rust::ValidationReport) -> Vec<ResultKey> {
 }
 
 /// Multiset difference: (missing from actual, unexpected in actual).
-fn diff_result_sets(expected: &[ResultKey], actual: &[ResultKey]) -> (Vec<ResultKey>, Vec<ResultKey>) {
+fn diff_result_sets(
+    expected: &[ResultKey],
+    actual: &[ResultKey],
+) -> (Vec<ResultKey>, Vec<ResultKey>) {
     let mut missing = expected.to_vec();
     let mut extra = Vec::new();
     for a in actual {
@@ -507,9 +510,7 @@ fn parse_test_case(graph: &Graph, test_node: TermRef, base_file: &Path) -> Optio
     };
 
     let expected_results = match result {
-        TermRef::BlankNode(bn) => {
-            parse_expected_results(graph, NamedOrBlankNodeRef::BlankNode(bn))
-        }
+        TermRef::BlankNode(bn) => parse_expected_results(graph, NamedOrBlankNodeRef::BlankNode(bn)),
         _ => Vec::new(),
     };
 

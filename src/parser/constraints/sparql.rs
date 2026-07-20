@@ -18,10 +18,46 @@ use crate::{
 };
 
 /// A parsed executable plus whether it needs the slow, per-focus-node
-/// text-based pre-binding path instead of oxigraph's `substitute_variable`.
+/// text-based pre-binding path instead of oxigraph's `substitute_variable`,
+/// and the variables in its top-level projection (empty for ASK).
 struct ParsedExecutable {
     executable: SparqlExecutable,
     needs_text_prebinding: bool,
+    projected_vars: Vec<String>,
+}
+
+/// Variables of the query's outermost SELECT projection; empty for ASK and
+/// unparseable queries. Walks through the top-level modifier chain
+/// (Distinct/Reduced/Slice/OrderBy) to the first Project.
+fn top_level_projection(query: &str, prefixes: &[(String, String)]) -> Vec<String> {
+    let mut parser = SparqlParser::new();
+    for (prefix, namespace) in prefixes {
+        if let Ok(with_prefix) = parser
+            .clone()
+            .with_prefix(prefix.clone(), namespace.clone())
+        {
+            parser = with_prefix;
+        }
+    }
+    let Ok(parsed) = parser.parse_query(query) else {
+        return Vec::new();
+    };
+    let Query::Select { pattern, .. } = parsed else {
+        return Vec::new();
+    };
+    let mut current = &pattern;
+    loop {
+        match current {
+            GraphPattern::Project { variables, .. } => {
+                return variables.iter().map(|v| v.as_str().to_string()).collect();
+            }
+            GraphPattern::Distinct { inner }
+            | GraphPattern::Reduced { inner }
+            | GraphPattern::Slice { inner, .. }
+            | GraphPattern::OrderBy { inner, .. } => current = inner,
+            _ => return Vec::new(),
+        }
+    }
 }
 
 fn parse_executable<'a>(
@@ -55,10 +91,12 @@ fn parse_executable<'a>(
     }
 
     let needs_text_prebinding = query_needs_text_prebinding(query_text, &prefixes);
+    let projected_vars = top_level_projection(query_text, &prefixes);
 
     Ok(Some(ParsedExecutable {
         executable: sparql_executable,
         needs_text_prebinding,
+        projected_vars,
     }))
 }
 
@@ -382,6 +420,7 @@ fn parse_direct_shape_sparql_constraints<'a>(
         let ParsedExecutable {
             executable,
             needs_text_prebinding,
+            projected_vars,
         } = match parse_executable(graph, executable_node)? {
             Some(parsed) => parsed,
             None => continue,
@@ -395,6 +434,7 @@ fn parse_direct_shape_sparql_constraints<'a>(
             prefixes: parse_shacl_prefixes(graph, executable_node),
             parameter_bindings: Vec::new(),
             needs_text_prebinding,
+            projected_vars,
         }));
     }
 
@@ -402,6 +442,7 @@ fn parse_direct_shape_sparql_constraints<'a>(
         let ParsedExecutable {
             executable,
             needs_text_prebinding,
+            projected_vars,
         } = match parse_executable(graph, shape_node)? {
             Some(parsed) => parsed,
             None => return Ok(constraints),
@@ -414,6 +455,7 @@ fn parse_direct_shape_sparql_constraints<'a>(
             prefixes: parse_shacl_prefixes(graph, shape_node),
             parameter_bindings: Vec::new(),
             needs_text_prebinding,
+            projected_vars,
         }));
     }
 
@@ -503,6 +545,7 @@ fn parse_component_sparql_constraints<'a>(
                 let ParsedExecutable {
                     executable,
                     needs_text_prebinding,
+                    projected_vars,
                 } = match parse_executable(graph, validator_node)? {
                     Some(parsed) => parsed,
                     None => continue,
@@ -515,6 +558,7 @@ fn parse_component_sparql_constraints<'a>(
                     prefixes: parse_shacl_prefixes(graph, validator_node),
                     parameter_bindings: parameter_bindings.clone(),
                     needs_text_prebinding,
+                    projected_vars,
                 }));
             }
         }

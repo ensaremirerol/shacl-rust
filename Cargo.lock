@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-py"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "oxigraph",
  "pyo3",

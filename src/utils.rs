@@ -294,12 +294,28 @@ pub fn parse_shacl_prefixes<'a>(
     graph: &'a Graph,
     executable: NamedOrBlankNodeRef<'a>,
 ) -> Vec<(String, String)> {
+    const OWL_IMPORTS: NamedNodeRef<'_> =
+        NamedNodeRef::new_unchecked("http://www.w3.org/2002/07/owl#imports");
+
     let mut prefixes = Vec::new();
 
-    for prefixes_term in graph.objects_for_subject_predicate(executable, sh::PREFIXES) {
-        let Some(prefixes_node) = term_to_named_or_blank(prefixes_term) else {
+    // sh:prefixes points at prefix ontologies, which may pull in further
+    // declarations via owl:imports (transitively, within the shapes graph).
+    let mut to_visit: Vec<NamedOrBlankNodeRef<'a>> = graph
+        .objects_for_subject_predicate(executable, sh::PREFIXES)
+        .filter_map(term_to_named_or_blank)
+        .collect();
+    let mut visited: FxHashSet<NamedOrBlankNodeRef<'a>> = FxHashSet::default();
+
+    while let Some(prefixes_node) = to_visit.pop() {
+        if !visited.insert(prefixes_node) {
             continue;
-        };
+        }
+        to_visit.extend(
+            graph
+                .objects_for_subject_predicate(prefixes_node, OWL_IMPORTS)
+                .filter_map(term_to_named_or_blank),
+        );
 
         for decl_term in graph.objects_for_subject_predicate(prefixes_node, sh::DECLARE) {
             let Some(decl_node) = term_to_named_or_blank(decl_term) else {
