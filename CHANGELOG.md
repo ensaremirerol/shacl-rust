@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.6...shacl-rust-v0.2.7) (2026-07-20)
+
+
+### Bug Fixes
+
+* pre-bind SPARQL variables outside the SELECT projection ([d2f59d3](https://github.com/ensaremirerol/shacl-rust/commit/d2f59d341c2eda9a0086b577d6efe3452d1935be))
+* serialize full sh:resultPath structures in RDF reports ([94bfda0](https://github.com/ensaremirerol/shacl-rust/commit/94bfda0fd45eb20b691d1038c71e9f6328d7c757))
+* spec-correct result cardinality and value-node coverage in core constraints ([5fc98d7](https://github.com/ensaremirerol/shacl-rust/commit/5fc98d7b3ad1ebe953fbabdda0a52190df2a7053))
+
 ## [0.2.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.5...shacl-rust-v0.2.6) (2026-07-20)
 
 
