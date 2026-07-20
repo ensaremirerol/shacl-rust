@@ -85,7 +85,12 @@ jobs:
     publish:
         needs: [build-wheels, build-sdist]
         runs-on: ubuntu-latest
-        # Publishing requires the PYPI_API_TOKEN repository secret.
+        # Uses PyPI trusted publishing (OIDC): the "pypi" environment below and
+        # this workflow's filename are registered as a trusted publisher for
+        # the shacl-rust project on PyPI. No API token involved.
+        environment: pypi
+        permissions:
+            id-token: write
         steps:
             - uses: actions/download-artifact@v4
               with:
@@ -96,6 +101,5 @@ jobs:
             - name: Publish to PyPI
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
-                  password: ${{ secrets.PYPI_API_TOKEN }}
                   packages-dir: dist
                   skip-existing: true
