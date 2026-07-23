@@ -321,7 +321,11 @@ function handleDiagnosticsListClick(event) {
 
   const focusChip = event.target.closest(".focus-chip");
   if (focusChip) {
-    openWhyPanel(focusChip.dataset.focus, focusChip.dataset.shape || null);
+    const shapeIri =
+      focusChip.dataset.shape && !focusChip.dataset.shape.startsWith("_:")
+        ? focusChip.dataset.shape
+        : null;
+    openWhyPanel(focusChip.dataset.focus, shapeIri);
     return;
   }
 

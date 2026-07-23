@@ -191,8 +191,7 @@ pub fn shape_target_nodes_json(
     let parsed_shapes = parse_shapes(validation_dataset.shapes_graph())
         .map_err(|e| to_js_error(format!("Failed to parse SHACL shapes: {}", e)))?;
 
-    let entries =
-        shacl_rust::diagnostics::shape_target_nodes(&validation_dataset, &parsed_shapes);
+    let entries = shacl_rust::diagnostics::shape_target_nodes(&validation_dataset, &parsed_shapes);
 
     let json_array: Vec<serde_json::Value> = entries
         .into_iter()
@@ -200,7 +199,11 @@ pub fn shape_target_nodes_json(
             let targets: Vec<serde_json::Value> = nodes
                 .into_iter()
                 .map(|node| {
-                    let term_kind = if node.starts_with("_:") { "blank" } else { "iri" };
+                    let term_kind = if node.starts_with("_:") {
+                        "blank"
+                    } else {
+                        "iri"
+                    };
                     serde_json::json!({ "node": node, "term_kind": term_kind })
                 })
                 .collect();
@@ -269,14 +272,15 @@ pub fn why_json(
         .canonical_term(oxigraph::model::TermRef::from(focus_node.as_ref()))
         .unwrap_or_else(|| oxigraph::model::TermRef::from(focus_node.as_ref()));
 
-    let shape_node = if shape_iri.is_empty() {
-        None
-    } else {
-        let shape_trimmed = trim_angle_brackets(shape_iri);
-        Some(oxigraph::model::NamedNode::new(shape_trimmed).map_err(|e| {
-            to_js_error(format!("Invalid shape IRI '{}': {}", shape_trimmed, e))
-        })?)
-    };
+    let shape_node =
+        if shape_iri.is_empty() {
+            None
+        } else {
+            let shape_trimmed = trim_angle_brackets(shape_iri);
+            Some(oxigraph::model::NamedNode::new(shape_trimmed).map_err(|e| {
+                to_js_error(format!("Invalid shape IRI '{}': {}", shape_trimmed, e))
+            })?)
+        };
     let shape_filter = shape_node
         .as_ref()
         .map(|n| oxigraph::model::NamedOrBlankNodeRef::from(n.as_ref()));

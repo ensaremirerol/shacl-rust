@@ -126,15 +126,33 @@ export function renderShapesPanel(shapeTargets, diags) {
     return '<p class="empty">No shapes with targets.</p>';
   }
 
+  // A violation's source_shape is the constraint-bearing shape, which for a
+  // property-path constraint is an anonymous nested property shape (a blank
+  // node), not the outer shape that owns the target. A blank-node
+  // source_shape can't be correlated back to its owning entry by id, so a
+  // blank-node-sourced violation flags its focus node under every entry
+  // that targets it; an exact (focus_node, source_shape) match is used
+  // whenever source_shape is an IRI (the violation is on the shape itself).
   const violatingPairs = new Set(
-    diags.filter((d) => d.focus_node != null).map((d) => violationKey(d.focus_node, d.source_shape))
+    diags
+      .filter((d) => d.focus_node != null && d.source_shape != null && !d.source_shape.startsWith("_:"))
+      .map((d) => violationKey(d.focus_node, d.source_shape))
+  );
+  const violatingFocusNodesFromNestedShape = new Set(
+    diags
+      .filter((d) => d.focus_node != null && d.source_shape != null && d.source_shape.startsWith("_:"))
+      .map((d) => d.focus_node)
   );
 
   return shapeTargets
     .map((entry) => {
       const chips = entry.targets
         .map((t) => {
-          const flagged = violatingPairs.has(violationKey(t.node, entry.shape)) ? " flagged" : "";
+          const flagged =
+            violatingPairs.has(violationKey(t.node, entry.shape)) ||
+            violatingFocusNodesFromNestedShape.has(t.node)
+              ? " flagged"
+              : "";
           return `<button type="button" class="node-chip${flagged}" data-node="${escapeHtml(t.node)}" data-shape="${escapeHtml(entry.shape)}" data-kind="${escapeHtml(t.term_kind)}">${escapeHtml(t.node)}</button>`;
         })
         .join("");
