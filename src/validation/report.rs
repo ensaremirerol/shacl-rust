@@ -372,6 +372,34 @@ impl<'a> ValidationResult<'a> {
         self
     }
 
+    pub fn focus_node(&self) -> TermRef<'a> {
+        self.focus_node
+    }
+
+    pub fn source_shape(&self) -> NamedOrBlankNodeRef<'a> {
+        self.source_shape
+    }
+
+    pub fn severity(&self) -> NamedNodeRef<'a> {
+        self.severity
+    }
+
+    pub fn source_constraint_component(&self) -> Option<NamedNodeRef<'a>> {
+        self.source_constraint_component
+    }
+
+    pub fn result_path(&self) -> Option<&Path<'a>> {
+        self.result_path.as_ref()
+    }
+
+    pub fn value(&self) -> Option<TermRef<'a>> {
+        self.value
+    }
+
+    pub fn messages(&self) -> &[String] {
+        &self.messages
+    }
+
     pub fn as_json(&self) -> serde_json::Value {
         let mut result_obj = serde_json::json!({
             "focusNode": self.focus_node.to_string(),

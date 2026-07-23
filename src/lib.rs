@@ -1,4 +1,5 @@
 pub mod core;
+pub mod diagnostics;
 pub mod err;
 pub mod indexed_graph;
 pub mod parser;
