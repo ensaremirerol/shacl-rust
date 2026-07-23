@@ -64,3 +64,10 @@ fn did_you_mean_suggests_close_term() {
         l4.help
     );
 }
+
+#[test]
+fn node_shape_pair_constraints_are_not_l0005() {
+    let ttl = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> .
+        ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:equals ex:other .";
+    assert!(!lint_codes(ttl).contains(&"L0005"), "{:?}", lint_codes(ttl));
+}

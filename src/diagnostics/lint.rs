@@ -283,6 +283,8 @@ fn lint_l0004_unknown_term(graph: &Graph, diags: &mut Vec<Diagnostic>) {
 
 /// L0005 (Warning): a path-requiring constraint (`Constraint::requires_path`)
 /// attached directly to a node shape (`path: None`).
+/// Exception: property-pair constraints (Equals, Disjoint, LessThan, LessThanOrEquals)
+/// are permitted directly on node shapes per W3C SHACL spec (e.g., core/node/equals-001.ttl).
 fn lint_l0005_path_required<'a>(
     graph: &'a Graph,
     shapes: &'a [Shape<'a>],
@@ -293,7 +295,16 @@ fn lint_l0005_path_required<'a>(
             continue;
         }
         for constraint in &shape.constraints {
-            if constraint.requires_path() {
+            // Property-pair constraints (Equals, Disjoint, LessThan, LessThanOrEquals)
+            // are permitted on node shapes per SHACL spec; they operate over node-to-node paths.
+            let is_pair_constraint = matches!(
+                constraint,
+                Constraint::Equals(_)
+                    | Constraint::Disjoint(_)
+                    | Constraint::LessThan(_)
+                    | Constraint::LessThanOrEquals(_)
+            );
+            if constraint.requires_path() && !is_pair_constraint {
                 push_diag(
                     diags,
                     graph,
