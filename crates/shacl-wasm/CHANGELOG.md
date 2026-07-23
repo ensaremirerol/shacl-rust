@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.14](https://github.com/ensaremirerol/shacl-rust/compare/shacl-wasm-v0.1.13...shacl-wasm-v0.1.14) (2026-07-23)
+
+
+### Features
+
+* **wasm:** add JSON diagnostics/why/explain/target-nodes exports ([1f599e2](https://github.com/ensaremirerol/shacl-rust/commit/1f599e24fab72c38e3f850815bff167d8a5c02d5))
+* **wasm:** expose rich diagnostics; add Diagnostics output mode to web demo ([72efbbc](https://github.com/ensaremirerol/shacl-rust/commit/72efbbc373f473944b7cc9466e1b107027e7cdfe))
+
+
+### Bug Fixes
+
+* why-panel/shapes-panel blank-node source_shape correlation + wasm fmt ([3842e84](https://github.com/ensaremirerol/shacl-rust/commit/3842e842bce9483b525a7c3db4a359dc39a87889))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.7 to 0.2.8
+
 ## [0.1.13](https://github.com/ensaremirerol/shacl-rust/compare/shacl-wasm-v0.1.12...shacl-wasm-v0.1.13) (2026-07-20)
 
 

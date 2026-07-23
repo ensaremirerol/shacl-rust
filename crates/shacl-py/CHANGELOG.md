@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-py-v0.2.5...shacl-py-v0.2.6) (2026-07-23)
+
+
+### Features
+
+* **shacl-py:** diagnostics list in validate output ([ca432f5](https://github.com/ensaremirerol/shacl-rust/commit/ca432f5e66b27121e50b83cb5309fe1ce17b6dbb))
+
+
+### Documentation
+
+* diagnostics usage in READMEs ([d104a7e](https://github.com/ensaremirerol/shacl-rust/commit/d104a7e96495dd13bd4a097d1362a3ea8f13fe1d))
+
+
+### Miscellaneous
+
+* release main ([d6c01b0](https://github.com/ensaremirerol/shacl-rust/commit/d6c01b05a811ed1df9f838e1f56b3a29d5d8b908))
+
 ## [0.2.5](https://github.com/ensaremirerol/shacl-rust/compare/shacl-py-v0.2.4...shacl-py-v0.2.5) (2026-07-20)
 
 

@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.8](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.7...shacl-rust-v0.2.8) (2026-07-23)
+
+
+### Features
+
+* derive rich diagnostics from validation reports ([a090833](https://github.com/ensaremirerol/shacl-rust/commit/a090833e519b22f3e827e5f5df19e1e2cdcaf4d5))
+* diagnostic code registry with explain entries ([b8bf883](https://github.com/ensaremirerol/shacl-rust/commit/b8bf88377151f60ccb380cd6e2476883b26cf25a))
+* diagnostic model and ValidationResult accessors ([3810784](https://github.com/ensaremirerol/shacl-rust/commit/38107844f4730f06cc9e1b00687726959524f86c))
+* NDJSON renderer for diagnostics ([38a61c0](https://github.com/ensaremirerol/shacl-rust/commit/38a61c0817a2d0aac69e4e563de4da767575c092))
+* shape linter with 12 rules ([fc2ec88](https://github.com/ensaremirerol/shacl-rust/commit/fc2ec88b999ba7873e2108c611b2ef9e93fa2ac9))
+* shape_target_nodes helper for browsing all resolved focus nodes ([32029a0](https://github.com/ensaremirerol/shacl-rust/commit/32029a062f5d40b77426c1fd4f1a1ef301d414d8))
+* terminal renderer for diagnostics ([0c06873](https://github.com/ensaremirerol/shacl-rust/commit/0c06873c65810e04d247abcbaf27749ed4b0366d))
+* **wasm:** expose rich diagnostics; add Diagnostics output mode to web demo ([72efbbc](https://github.com/ensaremirerol/shacl-rust/commit/72efbbc373f473944b7cc9466e1b107027e7cdfe))
+* **web:** diagnostics-first layout — summary banner, diagnostics list, shapes panel, raw report disclosure ([1efe612](https://github.com/ensaremirerol/shacl-rust/commit/1efe61211e9cb7bf414c7565e8eeca2c6e861e33))
+* **web:** pure rendering module for the diagnostics-first UI ([0610468](https://github.com/ensaremirerol/shacl-rust/commit/06104681f0c18aee1486b82ed877dfed44b4ac5b))
+* **web:** wire diagnostics-first UI to new wasm JSON exports ([5d5768f](https://github.com/ensaremirerol/shacl-rust/commit/5d5768f0663983956b676e4e41d6fc1fe6460fab))
+* why subcommand explaining conformance per focus node ([9f326aa](https://github.com/ensaremirerol/shacl-rust/commit/9f326aa56a13e8fee2b66c41abb106b892c31024))
+
+
+### Bug Fixes
+
+* caret runs underline the full highlight span ([6677456](https://github.com/ensaremirerol/shacl-rust/commit/667745659bf572520769c2975c52de5d11c25772))
+* disambiguate same-component constraints when matching why-trace results ([282b2f8](https://github.com/ensaremirerol/shacl-rust/commit/282b2f8451f0ef81ef17eb9b6b0261631ba7ceb6))
+* L0005 permits property-pair constraints on node shapes ([0e47570](https://github.com/ensaremirerol/shacl-rust/commit/0e47570f4ebd437a5f8fc259b55f3d5786efde9f))
+* robust first-sentence help and exact-local-name constraint highlighting ([7fbd5a2](https://github.com/ensaremirerol/shacl-rust/commit/7fbd5a2cff4a19ddcddba7d63c0b2a64de80a963))
+* why-panel/shapes-panel blank-node source_shape correlation + wasm fmt ([3842e84](https://github.com/ensaremirerol/shacl-rust/commit/3842e842bce9483b525a7c3db4a359dc39a87889))
+
+
+### Documentation
+
+* correct V0021 explain entry to engine-honest phrasing ([d8e7b51](https://github.com/ensaremirerol/shacl-rust/commit/d8e7b515320369c5a33f5361487dec0caa699be7))
+* design spec for rustc-style diagnostics ([efcf448](https://github.com/ensaremirerol/shacl-rust/commit/efcf448fd8474b2fd4a3a1fad47b51898d4ee60a))
+* design spec for web diagnostics UX redesign + deferred MCP integration ([c04e1dc](https://github.com/ensaremirerol/shacl-rust/commit/c04e1dcd5fad90cf7f96225dfc48086efd474136))
+* diagnostics usage in READMEs ([d104a7e](https://github.com/ensaremirerol/shacl-rust/commit/d104a7e96495dd13bd4a097d1362a3ea8f13fe1d))
+* implementation plan for rustc-style diagnostics ([5ce2d81](https://github.com/ensaremirerol/shacl-rust/commit/5ce2d81d8707a2f652595414ca05ce3a2ae1764b))
+* implementation plan for web diagnostics UX redesign ([f36f759](https://github.com/ensaremirerol/shacl-rust/commit/f36f75958077d19f7b27dbc67760bdeba7173235))
+
 ## [0.2.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.6...shacl-rust-v0.2.7) (2026-07-20)
 
 
