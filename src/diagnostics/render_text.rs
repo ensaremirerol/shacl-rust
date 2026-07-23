@@ -41,16 +41,6 @@ fn pluralize(count: usize, noun: &str) -> String {
     }
 }
 
-/// The caret run underlines the highlighted span but stops at its last
-/// alphanumeric character, so trailing punctuation (a closing `>`, a
-/// statement-terminating ` .`, and the like) is left un-underlined.
-fn caret_len(highlight: &str) -> usize {
-    highlight
-        .trim_end_matches(|c: char| !c.is_ascii_alphanumeric())
-        .chars()
-        .count()
-}
-
 /// Renders one snippet: the origin line, the fenced turtle lines with the
 /// caret annotation beneath the line containing `highlight`, or a `= note:`
 /// fallback line if `highlight` is not found anywhere in `turtle`.
@@ -79,7 +69,7 @@ fn render_snippet(out: &mut String, diag: &Diagnostic, snippet: &Snippet, color:
             let byte_col = line.find(snippet.highlight.as_str()).unwrap();
             let col = line[..byte_col].chars().count();
             let pad = " ".repeat(col);
-            let carets = "^".repeat(caret_len(&snippet.highlight));
+            let carets = "^".repeat(snippet.highlight.chars().count());
             if color {
                 writeln!(
                     out,

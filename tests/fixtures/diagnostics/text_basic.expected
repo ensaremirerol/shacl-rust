@@ -2,13 +2,13 @@ error[V0007]: value violates sh:minInclusive
   data graph: triple of focus node <http://example.org/alice>
    |
    |  <http://example.org/alice> <http://example.org/age> "-3"^^<http://www.w3.org/2001/XMLSchema#integer> .
-   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this value is less than the required minimum
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this value is less than the required minimum
    |
   shapes graph: declared by <http://example.org/PersonShape>
    |
    |  [] sh:path <http://example.org/age> ;
    |     sh:minInclusive "0"^^<http://www.w3.org/2001/XMLSchema#integer> .
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ constraint declared here
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ constraint declared here
    |
    = component: <http://www.w3.org/ns/shacl#MinInclusiveConstraintComponent>
    = expected: a literal >= "0"^^<http://www.w3.org/2001/XMLSchema#integer>
