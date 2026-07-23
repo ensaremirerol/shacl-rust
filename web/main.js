@@ -22,6 +22,7 @@ const shapesFormatEl = document.getElementById("shapes-format");
 const outputTypeEl = document.getElementById("output-type");
 const rdfOutputLabelEl = document.getElementById("rdf-output-label");
 const rdfOutputFormatEl = document.getElementById("rdf-output-format");
+const skipLintCheckEl = document.getElementById("skip-lint-check");
 const outputEl = document.getElementById("output");
 
 const dataEditorEl = document.getElementById("data-graph-editor");
@@ -59,6 +60,7 @@ const FILE_EXTENSION_TO_FORMAT = {
 let wasmReady = false;
 let wasmInit = null;
 let validateGraphs = null;
+let validateGraphsDiagnostics = null;
 let lintDataGraph = null;
 let lintShapesGraph = null;
 let dataEditor = null;
@@ -232,6 +234,18 @@ function validateNow() {
   setStatus("Validating...", "ok");
 
   try {
+    if (outputTypeEl.value === "diagnostics") {
+      outputEl.value = validateGraphsDiagnostics(
+        getDataGraphText(),
+        getShapesGraphText(),
+        dataFormatEl.value,
+        shapesFormatEl.value,
+        skipLintCheckEl.checked
+      );
+      setStatus("Validation completed.", "ok");
+      return;
+    }
+
     const result = validateGraphs(
       getDataGraphText(),
       getShapesGraphText(),
@@ -264,6 +278,7 @@ async function loadWasmModule() {
   const wasmModule = await import(moduleUrl);
   wasmInit = wasmModule.default;
   validateGraphs = wasmModule.validate_graphs;
+  validateGraphsDiagnostics = wasmModule.validate_graphs_diagnostics;
   lintDataGraph = wasmModule.lint_data_graph;
   lintShapesGraph = wasmModule.lint_shapes_graph;
 }

@@ -223,6 +223,7 @@
                 <option value="text">Text</option>
                 <option value="json">JSON</option>
                 <option value="rdf">RDF</option>
+                <option value="diagnostics">Diagnostics</option>
             </select>
 
             <label id="rdf-output-label" class="hidden" for="rdf-output-format">RDF format</label>
@@ -234,6 +235,8 @@
                 <option value="jsonld">JSON-LD (.jsonld)</option>
                 <option value="trig">TriG (.trig)</option>
             </select>
+
+            <label><input type="checkbox" id="skip-lint-check" /> Skip shape lint</label>
 
             <span class="spacer"></span>
             <button id="validate-btn">Validate</button>

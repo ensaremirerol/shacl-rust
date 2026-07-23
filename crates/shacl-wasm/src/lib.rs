@@ -55,6 +55,43 @@ pub fn validate_graphs(
 }
 
 #[wasm_bindgen]
+pub fn validate_graphs_diagnostics(
+    data_graph: &str,
+    shapes_graph: &str,
+    data_format: &str,
+    shapes_format: &str,
+    skip_lint: bool,
+) -> Result<String, JsValue> {
+    let data = read_graph_from_string(data_graph, data_format)
+        .map_err(|e| to_js_error(format!("Failed to parse data graph: {}", e)))?;
+    let shapes = read_graph_from_string(shapes_graph, shapes_format)
+        .map_err(|e| to_js_error(format!("Failed to parse shapes graph: {}", e)))?;
+
+    let validation_dataset =
+        shacl_rust::validation::dataset::ValidationDataset::from_graphs(data, shapes)
+            .map_err(|e| to_js_error(format!("Failed to create validation dataset: {}", e)))?;
+
+    let parsed_shapes = parse_shapes(validation_dataset.shapes_graph())
+        .map_err(|e| to_js_error(format!("Failed to parse SHACL shapes: {}", e)))?;
+
+    let mut diagnostics = if skip_lint {
+        Vec::new()
+    } else {
+        shacl_rust::diagnostics::lint_shapes(validation_dataset.shapes_graph(), &parsed_shapes)
+    };
+
+    let report = validate(&validation_dataset, &parsed_shapes);
+    diagnostics.extend(shacl_rust::diagnostics::from_report(
+        &report,
+        &validation_dataset,
+        &parsed_shapes,
+    ));
+    shacl_rust::diagnostics::sort_diagnostics(&mut diagnostics);
+
+    Ok(shacl_rust::diagnostics::render_text(&diagnostics, false))
+}
+
+#[wasm_bindgen]
 pub fn validate_graphs_conforms(
     data_graph: &str,
     shapes_graph: &str,
