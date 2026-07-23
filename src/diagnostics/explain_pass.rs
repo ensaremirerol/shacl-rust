@@ -341,3 +341,28 @@ fn constraint_component_iri(constraint: &Constraint<'_>) -> &'static str {
         Constraint::Sparql(_) => "http://www.w3.org/ns/shacl#SPARQLConstraintComponent",
     }
 }
+
+/// Every shape with at least one target, paired with the Display strings of
+/// its distinct resolved focus nodes - conforming and violating alike. This
+/// is the data behind the web demo's "Shapes & Focus Nodes" browser, which
+/// lets a user click a *conforming* node and ask "why did this pass?"
+/// instead of only ever landing on nodes that already appear in a
+/// violation. Shapes with no targets are omitted (nothing to browse).
+pub fn shape_target_nodes<'a>(
+    dataset: &'a ValidationDataset,
+    shapes: &'a [Shape<'a>],
+) -> Vec<(String, Vec<String>)> {
+    shapes
+        .iter()
+        .filter(|shape| !shape.targets.is_empty())
+        .map(|shape| {
+            let nodes: std::collections::BTreeSet<String> = shape
+                .targets
+                .iter()
+                .flat_map(|&target| crate::validation::resolve_target(dataset, target))
+                .map(|term| term.to_string())
+                .collect();
+            (shape.node.to_string(), nodes.into_iter().collect())
+        })
+        .collect()
+}

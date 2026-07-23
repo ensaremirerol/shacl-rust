@@ -10,7 +10,7 @@ mod render_json;
 mod render_text;
 
 pub use derive::from_report;
-pub use explain_pass::explain_conformance;
+pub use explain_pass::{explain_conformance, shape_target_nodes};
 pub use lint::lint_shapes;
 pub use registry::{all_entries, code_for_component, entry, RegistryEntry};
 pub use render_json::{diagnostic_to_json, render_ndjson};
