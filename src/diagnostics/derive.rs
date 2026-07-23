@@ -183,8 +183,8 @@ fn first_path_predicate<'a>(path: &Path<'a>) -> String {
 }
 
 /// Rule 5: up to 8 triples of the source shape node, rendered as Turtle, plus
-/// the object of whichever triple's predicate contains the component keyword
-/// (rule 6's "bound" lookup).
+/// the object of whichever triple's predicate matches the component keyword
+/// via [`select_predicate_index`] (rule 6's "bound" lookup).
 fn build_shapes_snippet<'a>(
     dataset: &'a ValidationDataset,
     source_shape: NamedOrBlankNodeRef<'a>,
@@ -217,15 +217,14 @@ fn build_shapes_snippet<'a>(
         .collect();
     let turtle = lines.join("\n");
 
-    let matched = keyword.and_then(|kw| {
-        triples
-            .iter()
-            .zip(lines.iter())
-            .find(|(t, _)| t.predicate.as_str().contains(kw))
-    });
-    let bound = matched.map(|(t, _)| plain_string(t.object));
-    let highlight = matched
-        .map(|(_, line)| line.trim_start().to_string())
+    let predicate_iris: Vec<String> = triples
+        .iter()
+        .map(|t| t.predicate.as_str().to_string())
+        .collect();
+    let matched_index = keyword.and_then(|kw| select_predicate_index(&predicate_iris, kw));
+    let bound = matched_index.map(|i| plain_string(triples[i].object));
+    let highlight = matched_index
+        .map(|i| lines[i].trim_start().to_string())
         .unwrap_or_else(|| lines[0].trim_start().to_string());
 
     let snippet = Snippet {
@@ -237,12 +236,58 @@ fn build_shapes_snippet<'a>(
     (Some(snippet), bound)
 }
 
+/// Selects the index of the predicate IRI in `predicate_iris` that
+/// corresponds to `keyword` (a [`component_keyword`] value, e.g. `"in"` or
+/// `"disjoint"`). Matches by exact predicate local name (the IRI fragment
+/// after `#`, or the final path segment after `/`) first, so that e.g. an
+/// `sh:in` constraint is never shadowed by an unrelated `sh:disjoint`
+/// triple merely because `"in"` is a substring of `"disjoint"`. Falls back
+/// to a raw substring `contains` only when no predicate's local name
+/// matches exactly.
+fn select_predicate_index(predicate_iris: &[String], keyword: &str) -> Option<usize> {
+    predicate_iris
+        .iter()
+        .position(|iri| local_name(iri) == keyword)
+        .or_else(|| predicate_iris.iter().position(|iri| iri.contains(keyword)))
+}
+
+/// The fragment/local-name portion of an IRI: the substring after the last
+/// `#`, or after the last `/` if there is no `#`, or the whole string if
+/// neither is present.
+fn local_name(iri: &str) -> &str {
+    iri.rsplit(['#', '/']).next().unwrap_or(iri)
+}
+
 /// The result of rule 6's per-component lookup table.
 struct ComponentTable {
     annotation: String,
     expected: Option<String>,
     help: Option<String>,
     actual_none: bool,
+}
+
+/// The first sentence of `text`, trailing period included: scans for the
+/// first ". " boundary that isn't immediately preceded by the abbreviations
+/// `"e.g"`, `"i.e"`, or `"etc"` (checked as the 3 characters before the
+/// period), so that explanations like `"...(e.g. en matches en-NZ). Second
+/// sentence."` truncate after the real sentence rather than after `"(e.g"`.
+/// Falls back to the whole text when no such boundary is found.
+fn first_sentence(text: &str) -> &str {
+    let mut search_start = 0usize;
+    while let Some(rel) = text[search_start..].find(". ") {
+        let period_idx = search_start + rel;
+        let preceding = if period_idx >= 3 {
+            &text[period_idx - 3..period_idx]
+        } else {
+            ""
+        };
+        if matches!(preceding, "e.g" | "i.e" | "etc") {
+            search_start = period_idx + 2;
+            continue;
+        }
+        return &text[..=period_idx];
+    }
+    text
 }
 
 fn component_table(
@@ -252,13 +297,7 @@ fn component_table(
     title: &str,
     reg_entry: Option<&registry::RegistryEntry>,
 ) -> ComponentTable {
-    let help = reg_entry.map(|e| {
-        e.explanation
-            .split(". ")
-            .next()
-            .unwrap_or(e.explanation)
-            .to_string()
-    });
+    let help = reg_entry.map(|e| first_sentence(e.explanation).to_string());
     let path = path.unwrap_or("");
 
     let (annotation, expected, actual_none) = match keyword {
@@ -340,4 +379,33 @@ fn find_owning_shape<'a, 'b>(
     shapes.iter().find(|s| {
         s.node == source_shape || s.property_shapes.iter().any(|p| p.node == source_shape)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_sentence_skips_abbreviations() {
+        assert_eq!(
+            first_sentence("Matches BCP 47 ranges (e.g. en matches en-NZ). Second sentence."),
+            "Matches BCP 47 ranges (e.g. en matches en-NZ)."
+        );
+        assert_eq!(first_sentence("One sentence only"), "One sentence only");
+        assert_eq!(first_sentence("Plain. Tail."), "Plain.");
+        assert_eq!(
+            first_sentence("That is, i.e. this. Tail."),
+            "That is, i.e. this."
+        );
+    }
+
+    #[test]
+    fn keyword_matches_exact_local_name_over_substring() {
+        // simulate the selection logic on rendered predicate IRIs
+        let lines = vec![
+            "http://www.w3.org/ns/shacl#disjoint".to_string(),
+            "http://www.w3.org/ns/shacl#in".to_string(),
+        ];
+        assert_eq!(select_predicate_index(&lines, "in"), Some(1));
+    }
 }
