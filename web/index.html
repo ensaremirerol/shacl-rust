@@ -68,12 +68,14 @@
 
         select,
         button,
-        textarea {
+        textarea,
+        input[type="text"] {
             font: inherit;
         }
 
         select,
-        button {
+        button,
+        input[type="text"] {
             background: #111827;
             color: #e5e7eb;
             border: 1px solid #4b5563;
@@ -156,6 +158,218 @@
             font-size: 0.85rem;
         }
 
+        .explain-search-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.5rem 0 1rem;
+        }
+
+        .explain-search-row input {
+            width: 140px;
+        }
+
+        .banner {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            margin-bottom: 0.75rem;
+        }
+
+        .banner.ok {
+            background: #064e3b;
+            color: #6ee7b7;
+            border: 1px solid #10b981;
+        }
+
+        .banner.err {
+            background: #450a0a;
+            color: #fca5a5;
+            border: 1px solid #ef4444;
+        }
+
+        .banner-counts {
+            opacity: 0.85;
+            font-size: 0.9rem;
+        }
+
+        .diag-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .diag-card {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .diag-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.8rem;
+            cursor: pointer;
+        }
+
+        .code-badge {
+            background: #111827;
+            color: #93c5fd;
+            border: 1px solid #4b5563;
+            border-radius: 6px;
+            padding: 0.1rem 0.45rem;
+            font-size: 0.85rem;
+        }
+
+        .diag-title {
+            flex: 1;
+        }
+
+        .diag-body {
+            padding: 0 0.8rem 0.7rem;
+            border-top: 1px solid #374151;
+        }
+
+        .snippet {
+            margin: 0.6rem 0;
+        }
+
+        .snippet-origin {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            margin-bottom: 0.2rem;
+        }
+
+        .snippet-turtle {
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 0.6rem;
+            overflow-x: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .snippet-turtle mark {
+            background: #b45309;
+            color: #fffbeb;
+            border-radius: 3px;
+            padding: 0 0.1rem;
+        }
+
+        .snippet-annotation {
+            font-size: 0.85rem;
+            color: #d1d5db;
+            margin-top: 0.2rem;
+        }
+
+        .diag-field,
+        .diag-note,
+        .diag-help {
+            font-size: 0.88rem;
+            margin: 0.35rem 0;
+        }
+
+        .diag-help {
+            color: #93c5fd;
+        }
+
+        .diag-footer {
+            padding: 0 0.8rem 0.7rem;
+        }
+
+        .focus-chip,
+        .node-chip {
+            background: #111827;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+            border-radius: 999px;
+            padding: 0.25rem 0.65rem;
+            font-size: 0.82rem;
+            position: relative;
+        }
+
+        .focus-chip code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .shapes-panel summary,
+        .raw-report-details summary {
+            cursor: pointer;
+            font-weight: 600;
+            padding: 0.2rem 0;
+        }
+
+        .shape-row {
+            margin: 0.6rem 0;
+        }
+
+        .shape-name {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-bottom: 0.3rem;
+            word-break: break-all;
+        }
+
+        .node-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .node-chip.flagged::after {
+            content: "";
+            position: absolute;
+            top: -3px;
+            right: -3px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .side-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: min(480px, 92vw);
+            height: 100vh;
+            background: #1f2937;
+            border-left: 1px solid #374151;
+            box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+            overflow-y: auto;
+            z-index: 20;
+            padding: 1rem;
+        }
+
+        .side-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .side-panel-header button {
+            background: transparent;
+            border: none;
+            font-size: 1.3rem;
+            line-height: 1;
+            padding: 0.2rem 0.5rem;
+        }
+
+        .empty {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+
         @media (max-width: 900px) {
             .editor {
                 min-height: 42vh;
@@ -218,38 +432,61 @@
         </div>
 
         <div class="toolbar">
-            <label for="output-type">Output</label>
-            <select id="output-type">
-                <option value="text">Text</option>
-                <option value="json">JSON</option>
-                <option value="rdf">RDF</option>
-                <option value="diagnostics">Diagnostics</option>
-            </select>
-
-            <label id="rdf-output-label" class="hidden" for="rdf-output-format">RDF format</label>
-            <select id="rdf-output-format" class="hidden">
-                <option value="ttl">Turtle (.ttl)</option>
-                <option value="nt">N-Triples (.nt)</option>
-                <option value="nq">N-Quads (.nq)</option>
-                <option value="rdf">RDF/XML (.rdf)</option>
-                <option value="jsonld">JSON-LD (.jsonld)</option>
-                <option value="trig">TriG (.trig)</option>
-            </select>
-
             <label><input type="checkbox" id="skip-lint-check" /> Skip shape lint</label>
-
             <span class="spacer"></span>
             <button id="validate-btn">Validate</button>
         </div>
 
         <p id="status" class="status">Loading WebAssembly package...</p>
 
-        <section class="card">
-            <div class="label-row">
-                <label for="output">Validation report</label>
+        <div class="explain-search-row">
+            <label for="explain-code-input">Explain a code</label>
+            <input id="explain-code-input" type="text" placeholder="e.g. V0007" />
+            <button id="explain-code-btn">Explain</button>
+        </div>
+
+        <section id="summary-banner"></section>
+
+        <section id="diagnostics-list" class="diag-list"></section>
+
+        <details id="shapes-panel-details" class="card shapes-panel hidden">
+            <summary>Shapes &amp; Focus Nodes</summary>
+            <div id="shapes-panel-body"></div>
+        </details>
+
+        <details class="card raw-report-details">
+            <summary>Raw report</summary>
+            <div class="toolbar">
+                <label for="output-type">Output</label>
+                <select id="output-type">
+                    <option value="text">Text</option>
+                    <option value="json">JSON</option>
+                    <option value="rdf">RDF</option>
+                </select>
+
+                <label id="rdf-output-label" class="hidden" for="rdf-output-format">RDF format</label>
+                <select id="rdf-output-format" class="hidden">
+                    <option value="ttl">Turtle (.ttl)</option>
+                    <option value="nt">N-Triples (.nt)</option>
+                    <option value="nq">N-Quads (.nq)</option>
+                    <option value="rdf">RDF/XML (.rdf)</option>
+                    <option value="jsonld">JSON-LD (.jsonld)</option>
+                    <option value="trig">TriG (.trig)</option>
+                </select>
+
+                <span class="spacer"></span>
+                <button id="raw-report-btn">Generate raw report</button>
             </div>
             <textarea id="output" spellcheck="false" readonly></textarea>
-        </section>
+        </details>
+
+        <aside id="side-panel" class="side-panel hidden">
+            <div class="side-panel-header">
+                <strong id="side-panel-title"></strong>
+                <button id="side-panel-close" type="button" aria-label="Close">&times;</button>
+            </div>
+            <div id="side-panel-body"></div>
+        </aside>
     </main>
     <script type="module" src="./main.js"></script>
 </body>
