@@ -125,6 +125,22 @@ enum Commands {
         #[arg(value_name = "CODE")]
         code: String,
     },
+
+    /// Explain why a focus node does or does not fail shapes
+    Why {
+        #[arg(value_name = "SHAPES_FILE")]
+        shapes_file: PathBuf,
+        #[arg(value_name = "DATA_FILE")]
+        data_file: PathBuf,
+        /// Focus node IRI (angle brackets optional)
+        #[arg(long)]
+        focus: String,
+        /// Restrict to one shape IRI
+        #[arg(long)]
+        shape: Option<String>,
+        #[arg(long, default_value = "text")]
+        diagnostics: String,
+    },
 }
 
 fn main() -> Result<(), ShaclError> {
@@ -200,6 +216,19 @@ fn main() -> Result<(), ShaclError> {
             lint_command(shapes_file, format, &diagnostics)
         }
         Commands::Explain { code } => explain_command(&code),
+        Commands::Why {
+            shapes_file,
+            data_file,
+            focus,
+            shape,
+            diagnostics,
+        } => why_command(
+            shapes_file,
+            data_file,
+            &focus,
+            shape.as_deref(),
+            &diagnostics,
+        ),
     }
 }
 
@@ -660,6 +689,67 @@ fn explain_command(code: &str) -> Result<(), ShaclError> {
             std::process::exit(1);
         }
     }
+}
+
+/// Trims a single pair of optional surrounding angle brackets (`<...>`) from
+/// an IRI argument, so both `--focus http://example.org/a` and
+/// `--focus <http://example.org/a>` work.
+fn trim_angle_brackets(s: &str) -> &str {
+    s.trim().trim_start_matches('<').trim_end_matches('>')
+}
+
+/// Traces why `focus` does or does not conform to the shapes graph, printing
+/// the resulting diagnostics to stdout - the trace *is* the product of this
+/// subcommand, so it always exits 0 (it never fails on a violation).
+fn why_command(
+    shapes_file: PathBuf,
+    data_file: PathBuf,
+    focus: &str,
+    shape: Option<&str>,
+    diagnostics_mode: &str,
+) -> Result<(), ShaclError> {
+    let data_graph = read_graph_from_file(&data_file, None)?;
+    let shapes_graph = read_graph_from_file(&shapes_file, None)?;
+    let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)?;
+    let shapes = parser::parse_shapes(validation_dataset.shapes_graph())?;
+
+    let focus_iri = trim_angle_brackets(focus);
+    let focus_node = oxigraph::model::NamedNode::new(focus_iri)
+        .map_err(|e| ShaclError::Parse(format!("Invalid focus IRI '{}': {}", focus_iri, e)))?;
+    let focus_term = validation_dataset
+        .data()
+        .canonical_term(oxigraph::model::TermRef::from(focus_node.as_ref()))
+        .unwrap_or_else(|| oxigraph::model::TermRef::from(focus_node.as_ref()));
+
+    let shape_node = match shape {
+        Some(s) => {
+            let shape_iri = trim_angle_brackets(s);
+            Some(oxigraph::model::NamedNode::new(shape_iri).map_err(|e| {
+                ShaclError::Parse(format!("Invalid shape IRI '{}': {}", shape_iri, e))
+            })?)
+        }
+        None => None,
+    };
+    let shape_filter = shape_node
+        .as_ref()
+        .map(|n| oxigraph::model::NamedOrBlankNodeRef::from(n.as_ref()));
+
+    let diags = shacl_rust::diagnostics::explain_conformance(
+        &validation_dataset,
+        &shapes,
+        focus_term,
+        shape_filter,
+    );
+
+    match diagnostics_mode {
+        "json" => print!("{}", shacl_rust::diagnostics::render_ndjson(&diags)),
+        _ => {
+            let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            print!("{}", shacl_rust::diagnostics::render_text(&diags, color));
+        }
+    }
+
+    Ok(())
 }
 
 fn read_graph_from_file(

@@ -44,7 +44,7 @@ pub fn build_target_cache<'a>(
 /// Resolves a target against the dataset: SPARQL-based targets run their
 /// select query on the dataset's store; everything else resolves directly
 /// against the data graph.
-fn resolve_target<'a>(
+pub(crate) fn resolve_target<'a>(
     validation_dataset: &'a ValidationDataset,
     target: Target<'a>,
 ) -> FxHashSet<TermRef<'a>> {
@@ -238,7 +238,7 @@ impl<'a> Shape<'a> {
     }
 
     /// Validates a focus node against this shape.
-    fn validate_focus_node(
+    pub(crate) fn validate_focus_node(
         &'a self,
         validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
@@ -251,7 +251,7 @@ impl<'a> Shape<'a> {
     }
 
     /// Resolves value nodes for the current shape.
-    fn get_value_nodes(
+    pub(crate) fn get_value_nodes(
         &'a self,
         validation_dataset: &'a ValidationDataset,
         focus_node: TermRef<'a>,
