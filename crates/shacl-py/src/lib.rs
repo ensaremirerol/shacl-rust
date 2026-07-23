@@ -167,10 +167,30 @@ fn build_dataset(
     }
 }
 
-fn run_validation(dataset: &ValidationDataset) -> Result<serde_json::Value, ShaclError> {
+fn run_validation(
+    dataset: &ValidationDataset,
+    want_diagnostics: bool,
+) -> Result<serde_json::Value, ShaclError> {
     let parsed_shapes = parse_shapes(dataset.shapes_graph())?;
     let report = shacl_rust_core::validate(dataset, &parsed_shapes);
-    Ok(report.as_json())
+    let mut json = report.as_json();
+    if want_diagnostics {
+        let mut diags =
+            shacl_rust_core::diagnostics::lint_shapes(dataset.shapes_graph(), &parsed_shapes);
+        diags.extend(shacl_rust_core::diagnostics::from_report(
+            &report,
+            dataset,
+            &parsed_shapes,
+        ));
+        shacl_rust_core::diagnostics::sort_diagnostics(&mut diags);
+        json["diagnostics"] = serde_json::Value::Array(
+            diags
+                .iter()
+                .map(shacl_rust_core::diagnostics::diagnostic_to_json)
+                .collect(),
+        );
+    }
+    Ok(json)
 }
 
 fn validate_strings(
@@ -179,6 +199,7 @@ fn validate_strings(
     data_format: &str,
     shapes_format: &str,
     experimental_index: bool,
+    want_diagnostics: bool,
 ) -> Result<serde_json::Value, ShaclError> {
     let dataset = build_dataset(
         data.as_bytes(),
@@ -187,7 +208,7 @@ fn validate_strings(
         shapes_format,
         experimental_index,
     )?;
-    run_validation(&dataset)
+    run_validation(&dataset, want_diagnostics)
 }
 
 fn validate_sources(
@@ -197,6 +218,7 @@ fn validate_sources(
     data_format: &str,
     shapes_format: &str,
     experimental_index: bool,
+    want_diagnostics: bool,
 ) -> PyResult<serde_json::Value> {
     py.allow_threads(|| {
         let dataset = build_dataset(
@@ -206,7 +228,7 @@ fn validate_sources(
             shapes_format,
             experimental_index,
         )?;
-        run_validation(&dataset)
+        run_validation(&dataset, want_diagnostics)
     })
     .map_err(shacl_err)
 }
@@ -217,9 +239,11 @@ fn validate_sources(
 /// "rdf", "jsonld", "trig"). Returns the validation report as a dict with a
 /// boolean "conforms" key and a "results" list. Set experimental_index=True
 /// to load the data graph into the experimental interned index (faster on
-/// large graphs).
+/// large graphs). Set diagnostics=True to add a "diagnostics" key: a list of
+/// rustc-style diagnostics (shape lints, then violation diagnostics).
 #[pyfunction]
-#[pyo3(signature = (data, shapes, *, data_format = "turtle", shapes_format = "turtle", experimental_index = false))]
+#[pyo3(signature = (data, shapes, *, data_format = "turtle", shapes_format = "turtle", experimental_index = false, diagnostics = false))]
+#[allow(clippy::too_many_arguments)]
 fn validate(
     py: Python<'_>,
     data: &str,
@@ -227,10 +251,18 @@ fn validate(
     data_format: &str,
     shapes_format: &str,
     experimental_index: bool,
+    diagnostics: bool,
 ) -> PyResult<PyObject> {
     let json = py
         .allow_threads(|| {
-            validate_strings(data, shapes, data_format, shapes_format, experimental_index)
+            validate_strings(
+                data,
+                shapes,
+                data_format,
+                shapes_format,
+                experimental_index,
+                diagnostics,
+            )
         })
         .map_err(shacl_err)?;
     json_to_py(py, &json)
@@ -249,7 +281,14 @@ fn conforms(
 ) -> PyResult<bool> {
     let json = py
         .allow_threads(|| {
-            validate_strings(data, shapes, data_format, shapes_format, experimental_index)
+            validate_strings(
+                data,
+                shapes,
+                data_format,
+                shapes_format,
+                experimental_index,
+                false,
+            )
         })
         .map_err(shacl_err)?;
     Ok(json
@@ -264,9 +303,11 @@ fn conforms(
 /// with a binary .read() method (open(..., "rb"), gzip.open, io.BytesIO,
 /// sockets). The serialized text is never fully held in memory. Formats are
 /// inferred from path extensions; file-like inputs require data_format= /
-/// shapes_format=.
+/// shapes_format=. Set diagnostics=True to add a "diagnostics" key: a list
+/// of rustc-style diagnostics (shape lints, then violation diagnostics).
 #[pyfunction]
-#[pyo3(signature = (data, shapes, *, data_format = None, shapes_format = None, experimental_index = false))]
+#[pyo3(signature = (data, shapes, *, data_format = None, shapes_format = None, experimental_index = false, diagnostics = false))]
+#[allow(clippy::too_many_arguments)]
 fn validate_file(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
@@ -274,6 +315,7 @@ fn validate_file(
     data_format: Option<&str>,
     shapes_format: Option<&str>,
     experimental_index: bool,
+    diagnostics: bool,
 ) -> PyResult<PyObject> {
     let data = GraphSource::extract(data)?;
     let shapes = GraphSource::extract(shapes)?;
@@ -286,6 +328,7 @@ fn validate_file(
         &data_format,
         &shapes_format,
         experimental_index,
+        diagnostics,
     )?;
     json_to_py(py, &json)
 }
@@ -313,6 +356,7 @@ fn conforms_file(
         &data_format,
         &shapes_format,
         experimental_index,
+        false,
     )?;
     Ok(json
         .get("conforms")
