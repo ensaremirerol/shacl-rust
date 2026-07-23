@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.8](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.7...shacl-cli-v0.2.8) (2026-07-23)
+
+
+### Features
+
+* **shacl-cli:** diagnostics output, lint and explain subcommands ([3ffeed5](https://github.com/ensaremirerol/shacl-rust/commit/3ffeed5dbdf682482a791ea952c0ca54b5087125))
+* why subcommand explaining conformance per focus node ([9f326aa](https://github.com/ensaremirerol/shacl-rust/commit/9f326aa56a13e8fee2b66c41abb106b892c31024))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.7 to 0.2.8
+
 ## [0.2.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.6...shacl-cli-v0.2.7) (2026-07-20)
 
 
