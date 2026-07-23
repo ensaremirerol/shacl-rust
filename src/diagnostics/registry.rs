@@ -288,8 +288,9 @@ absent from the list, even if semantically similar, violates.",
         component: Some("http://www.w3.org/ns/shacl#NodeConstraintComponent"),
         spec_ref: "https://www.w3.org/TR/shacl/#NodeConstraintComponent",
         explanation: "sh:node requires every value node to itself conform, as a focus \
-node, to the referenced node shape. A literal value node never conforms \
-(node shapes describe named or blank nodes' properties), and any nested \
+node, to the referenced node shape. In this implementation, literal value \
+nodes are currently reported as violations of sh:node, since the referenced \
+shape is evaluated against the value node as a focus node. Any nested \
 violation against the referenced shape is surfaced as one validation \
 result at the outer value node.",
         failing_example: "ex:alice ex:address [ ex:city \"\" ] .\n# with: sh:path ex:address ; sh:node ex:AddressShape (requires ex:city sh:minLength 1)",
