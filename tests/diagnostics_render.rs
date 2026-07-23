@@ -39,3 +39,19 @@ fn text_rendering_matches_golden_file() {
     let expected = include_str!("fixtures/diagnostics/text_basic.expected");
     assert_eq!(rendered, expected, "\n--- rendered ---\n{rendered}");
 }
+
+#[test]
+fn ndjson_schema_is_stable() {
+    let line = render_ndjson(&[sample()]);
+    let v: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+    assert_eq!(v["code"], "V0007");
+    assert_eq!(v["severity"], "error");
+    assert_eq!(v["snippets"][0]["origin"], "data");
+    assert_eq!(v["snippets"][1]["origin"], "shapes");
+    assert_eq!(v["verdict"], serde_json::Value::Null);
+    assert!(v["constraint_component"]
+        .as_str()
+        .unwrap()
+        .ends_with("MinInclusiveConstraintComponent"));
+    assert_eq!(line.matches('\n').count(), 1);
+}
