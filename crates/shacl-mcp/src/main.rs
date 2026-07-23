@@ -82,8 +82,9 @@ struct ValidateDiagnosticsArgs {
     #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
     shapes_format: String,
     #[schemars(
-        description = "Skip the 12 semantic shape-lint rules and only return validation diagnostics"
+        description = "Skip the 12 semantic shape-lint rules and only return validation diagnostics (default: false)"
     )]
+    #[serde(default)]
     skip_lint: bool,
 }
 

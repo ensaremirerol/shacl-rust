@@ -25,6 +25,7 @@ pub fn from_report<'a>(
         .iter()
         .map(|result| derive_one(result, dataset, shapes))
         .collect();
+    annotate_datatype_cross_references(&mut diags);
     super::sort_diagnostics(&mut diags);
     diags
 }
@@ -381,6 +382,52 @@ fn find_owning_shape<'a, 'b>(
     shapes.iter().find(|s| {
         s.node == source_shape || s.property_shapes.iter().any(|p| p.node == source_shape)
     })
+}
+
+/// The numeric-comparison components whose bound check against a value can
+/// independently fail alongside `sh:datatype` (`V0002`) on the same (focus
+/// node, path) - both are correct per SHACL's independent per-constraint
+/// evaluation, but three diagnostics for one malformed literal (wrong
+/// datatype plus both range bounds) can read as duplicate noise for what is
+/// really one root cause. See [`annotate_datatype_cross_references`].
+const COMPARISON_CODES: [&str; 4] = ["V0006", "V0007", "V0008", "V0009"];
+
+/// `(focus_node, path)` key for cross-referencing diagnostics at the same
+/// location; a missing path (a node-shape-level constraint, not a property
+/// path) is folded into its own uniform key rather than excluded.
+fn location_key(diag: &Diagnostic) -> Option<(String, String)> {
+    let focus = diag.focus_node.clone()?;
+    Some((focus, diag.path.clone().unwrap_or_default()))
+}
+
+/// Appends a cross-reference note to every numeric-comparison diagnostic
+/// (see [`COMPARISON_CODES`]) that shares a location with a `sh:datatype`
+/// violation, pointing back to it. Does not change which diagnostics are
+/// produced or how many - only adds one note to already-derived
+/// diagnostics.
+fn annotate_datatype_cross_references(diags: &mut [Diagnostic]) {
+    let datatype_locations: std::collections::HashSet<(String, String)> = diags
+        .iter()
+        .filter(|d| d.code == "V0002")
+        .filter_map(location_key)
+        .collect();
+
+    if datatype_locations.is_empty() {
+        return;
+    }
+
+    for diag in diags.iter_mut() {
+        if !COMPARISON_CODES.contains(&diag.code) {
+            continue;
+        }
+        if location_key(diag).is_some_and(|key| datatype_locations.contains(&key)) {
+            diag.notes.push(
+                "this value also fails sh:datatype at the same path (code V0002) - this \
+                 comparison may not be meaningful until the datatype is fixed"
+                    .to_string(),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
