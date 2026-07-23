@@ -92,8 +92,11 @@ function renderDiagnosticCard(diag, options = {}) {
 }
 
 function renderWhyTraceCard(diag) {
-  const verdict = diag.verdict ?? "not-targeted";
-  const icon = `${VERDICT_ICON[verdict] ?? ""} ${VERDICT_LABEL[verdict] ?? verdict}`;
+  if (diag.verdict == null) {
+    const icon = SEVERITY_ICON[diag.severity] ?? "";
+    return renderDiagnosticCard(diag, { leadingIcon: icon, defaultExpanded: true });
+  }
+  const icon = `${VERDICT_ICON[diag.verdict] ?? ""} ${VERDICT_LABEL[diag.verdict] ?? diag.verdict}`;
   return renderDiagnosticCard(diag, { leadingIcon: icon, defaultExpanded: true });
 }
 

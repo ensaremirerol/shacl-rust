@@ -79,6 +79,20 @@ fn missing_path_traces_vacuous() {
     );
 }
 
+#[test]
+fn trace_includes_a_header_entry_for_the_traced_node_shape() {
+    let data =
+        "@prefix ex: <http://example.org/> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+        ex:a a ex:Person ; ex:age \"3\"^^xsd:integer .";
+    let out = run(data, "http://example.org/a");
+    assert!(
+        out.iter().any(|(v, title)| v.is_none()
+            && title.contains("NodeShape")
+            && title.contains("PersonShape")),
+        "{out:?}"
+    );
+}
+
 /// Regression test for the misattribution bug in `find_matching_result`
 /// (`src/diagnostics/explain_pass.rs`): `sh:class ex:Person, ex:Employee` on
 /// one property shape parses into two separate `Constraint::Class`

@@ -108,6 +108,8 @@ fn trace_shape<'a>(
     targeting_notes: Vec<String>,
     out: &mut Vec<Diagnostic>,
 ) {
+    out.push(shape_header_diagnostic(shape, focus, &targeting_notes));
+
     let mut report = ValidationReport::new();
     shape.validate_focus_node(dataset, focus, &mut report);
 
@@ -137,6 +139,44 @@ fn trace_shape<'a>(
                 &targeting_notes,
             ));
         }
+    }
+}
+
+/// A lightweight header entry identifying the shape being traced, so a
+/// NodeShape whose constraints all live on nested (often anonymous
+/// blank-node) property shapes still has a visible anchor: without this,
+/// the only cards in its trace are its property shapes' own diagnostics,
+/// whose `source_shape` is the property shape's own (frequently anonymous)
+/// node, not the parent NodeShape's identity. Carries no verdict - it is
+/// not itself a pass/fail statement, just identification.
+fn shape_header_diagnostic<'a>(
+    shape: &'a Shape<'a>,
+    focus: TermRef<'a>,
+    targeting_notes: &[String],
+) -> Diagnostic {
+    let kind = if shape.is_property_shape() {
+        "PropertyShape"
+    } else {
+        "NodeShape"
+    };
+    let title = match &shape.name {
+        Some(name) => format!("{} {} ({})", kind, shape.node, name),
+        None => format!("{} {}", kind, shape.node),
+    };
+    Diagnostic {
+        code: "V0000",
+        severity: DiagnosticSeverity::Info,
+        title,
+        constraint_component: None,
+        snippets: Vec::new(),
+        expected: None,
+        actual: None,
+        notes: targeting_notes.to_vec(),
+        help: None,
+        focus_node: Some(focus.to_string()),
+        source_shape: Some(shape.node.to_string()),
+        path: None,
+        verdict: None,
     }
 }
 
