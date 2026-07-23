@@ -12,6 +12,13 @@ import {
 import { EditorState } from "https://esm.sh/@codemirror/state@6.5.2";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.3?deps=@codemirror/state@6.5.2,@codemirror/view@6.38.8";
 import { EditorView, keymap, lineNumbers } from "https://esm.sh/@codemirror/view@6.38.8?deps=@codemirror/state@6.5.2";
+import {
+  renderSummaryBanner,
+  renderDiagnosticsList,
+  renderShapesPanel,
+  renderExplainPanel,
+  renderWhyPanel,
+} from "./diagnostics.js";
 
 const statusEl = document.getElementById("status");
 const validateBtn = document.getElementById("validate-btn");
@@ -24,6 +31,17 @@ const rdfOutputLabelEl = document.getElementById("rdf-output-label");
 const rdfOutputFormatEl = document.getElementById("rdf-output-format");
 const skipLintCheckEl = document.getElementById("skip-lint-check");
 const outputEl = document.getElementById("output");
+const rawReportBtnEl = document.getElementById("raw-report-btn");
+const explainCodeInputEl = document.getElementById("explain-code-input");
+const explainCodeBtnEl = document.getElementById("explain-code-btn");
+const summaryBannerEl = document.getElementById("summary-banner");
+const diagnosticsListEl = document.getElementById("diagnostics-list");
+const shapesPanelDetailsEl = document.getElementById("shapes-panel-details");
+const shapesPanelBodyEl = document.getElementById("shapes-panel-body");
+const sidePanelEl = document.getElementById("side-panel");
+const sidePanelTitleEl = document.getElementById("side-panel-title");
+const sidePanelBodyEl = document.getElementById("side-panel-body");
+const sidePanelCloseEl = document.getElementById("side-panel-close");
 
 const dataEditorEl = document.getElementById("data-graph-editor");
 const shapesEditorEl = document.getElementById("shapes-graph-editor");
@@ -60,7 +78,10 @@ const FILE_EXTENSION_TO_FORMAT = {
 let wasmReady = false;
 let wasmInit = null;
 let validateGraphs = null;
-let validateGraphsDiagnostics = null;
+let validateDiagnosticsJson = null;
+let shapeTargetNodesJson = null;
+let explainCodeJson = null;
+let whyJson = null;
 let lintDataGraph = null;
 let lintShapesGraph = null;
 let dataEditor = null;
@@ -224,28 +245,165 @@ function getShapesGraphText() {
   return shapesEditor.state.doc.toString();
 }
 
-function validateNow() {
-  if (!wasmReady || !validateGraphs) {
+function closeSidePanel() {
+  sidePanelEl.classList.add("hidden");
+  sidePanelBodyEl.innerHTML = "";
+  sidePanelTitleEl.textContent = "";
+}
+
+function openSidePanel(title) {
+  sidePanelTitleEl.textContent = title;
+  sidePanelEl.classList.remove("hidden");
+}
+
+function openExplainPanel(code) {
+  const trimmed = (code ?? "").trim();
+  if (!trimmed) {
+    return;
+  }
+  if (!wasmReady || !explainCodeJson) {
+    setStatus("WASM is not ready yet.", "err");
+    return;
+  }
+
+  openSidePanel(`Explain: ${trimmed}`);
+  try {
+    const entry = JSON.parse(explainCodeJson(trimmed));
+    sidePanelTitleEl.textContent = `Explain: ${entry.code}`;
+    sidePanelBodyEl.innerHTML = renderExplainPanel(entry);
+  } catch (error) {
+    sidePanelBodyEl.innerHTML = `<p class="empty">${String(error)}</p>`;
+  }
+}
+
+function openWhyPanel(focusNode, shapeIri, options = {}) {
+  openSidePanel(`Why: ${focusNode}`);
+
+  if (options.blocked) {
+    sidePanelBodyEl.innerHTML =
+      '<p class="empty">Why-trace requires an IRI focus node; blank node focus nodes are not supported yet.</p>';
+    return;
+  }
+
+  if (!wasmReady || !whyJson) {
+    sidePanelBodyEl.innerHTML = '<p class="empty">WASM is not ready yet.</p>';
+    return;
+  }
+
+  try {
+    const trace = JSON.parse(
+      whyJson(
+        getDataGraphText(),
+        getShapesGraphText(),
+        dataFormatEl.value,
+        shapesFormatEl.value,
+        focusNode,
+        shapeIri ?? ""
+      )
+    );
+    sidePanelBodyEl.innerHTML = renderWhyPanel(trace, focusNode);
+  } catch (error) {
+    sidePanelBodyEl.innerHTML = `<p class="empty">${String(error)}</p>`;
+  }
+}
+
+function toggleDiagBody(headerEl) {
+  const body = headerEl.parentElement.querySelector(".diag-body");
+  body?.classList.toggle("hidden");
+}
+
+function handleDiagnosticsListClick(event) {
+  const codeBadge = event.target.closest(".code-badge");
+  if (codeBadge) {
+    openExplainPanel(codeBadge.dataset.code);
+    return;
+  }
+
+  const focusChip = event.target.closest(".focus-chip");
+  if (focusChip) {
+    openWhyPanel(focusChip.dataset.focus, focusChip.dataset.shape || null);
+    return;
+  }
+
+  const header = event.target.closest(".diag-header");
+  if (header) {
+    toggleDiagBody(header);
+  }
+}
+
+function handleShapesPanelClick(event) {
+  const chip = event.target.closest(".node-chip");
+  if (!chip) {
+    return;
+  }
+  openWhyPanel(chip.dataset.node, chip.dataset.shape, {
+    blocked: chip.dataset.kind === "blank",
+  });
+}
+
+function handleSidePanelClick(event) {
+  const codeBadge = event.target.closest(".code-badge");
+  if (codeBadge) {
+    openExplainPanel(codeBadge.dataset.code);
+    return;
+  }
+
+  const header = event.target.closest(".diag-header");
+  if (header) {
+    toggleDiagBody(header);
+  }
+}
+
+function runValidate() {
+  if (!wasmReady || !validateDiagnosticsJson || !shapeTargetNodesJson) {
     setStatus("WASM is not ready yet.", "err");
     return;
   }
 
   validateBtn.disabled = true;
   setStatus("Validating...", "ok");
+  closeSidePanel();
 
   try {
-    if (outputTypeEl.value === "diagnostics") {
-      outputEl.value = validateGraphsDiagnostics(
-        getDataGraphText(),
-        getShapesGraphText(),
+    const dataText = getDataGraphText();
+    const shapesText = getShapesGraphText();
+
+    const diagnostics = JSON.parse(
+      validateDiagnosticsJson(
+        dataText,
+        shapesText,
         dataFormatEl.value,
         shapesFormatEl.value,
         skipLintCheckEl.checked
-      );
-      setStatus("Validation completed.", "ok");
-      return;
-    }
+      )
+    );
+    const shapeTargets = JSON.parse(
+      shapeTargetNodesJson(dataText, shapesText, dataFormatEl.value, shapesFormatEl.value)
+    );
 
+    summaryBannerEl.innerHTML = renderSummaryBanner(diagnostics);
+    diagnosticsListEl.innerHTML = renderDiagnosticsList(diagnostics);
+    shapesPanelBodyEl.innerHTML = renderShapesPanel(shapeTargets, diagnostics);
+    shapesPanelDetailsEl.classList.toggle("hidden", shapeTargets.length === 0);
+
+    setStatus("Validation completed.", "ok");
+  } catch (error) {
+    summaryBannerEl.innerHTML = "";
+    diagnosticsListEl.innerHTML = "";
+    shapesPanelDetailsEl.classList.add("hidden");
+    setStatus(`Validation failed: ${error}`, "err");
+  } finally {
+    validateBtn.disabled = false;
+  }
+}
+
+function generateRawReport() {
+  if (!wasmReady || !validateGraphs) {
+    setStatus("WASM is not ready yet.", "err");
+    return;
+  }
+
+  try {
     const result = validateGraphs(
       getDataGraphText(),
       getShapesGraphText(),
@@ -264,12 +422,10 @@ function validateNow() {
       outputEl.value = result;
     }
 
-    setStatus("Validation completed.", "ok");
+    setStatus("Raw report generated.", "ok");
   } catch (error) {
     outputEl.value = "";
-    setStatus(`Validation failed: ${error}`, "err");
-  } finally {
-    validateBtn.disabled = false;
+    setStatus(`Raw report failed: ${error}`, "err");
   }
 }
 
@@ -278,7 +434,10 @@ async function loadWasmModule() {
   const wasmModule = await import(moduleUrl);
   wasmInit = wasmModule.default;
   validateGraphs = wasmModule.validate_graphs;
-  validateGraphsDiagnostics = wasmModule.validate_graphs_diagnostics;
+  validateDiagnosticsJson = wasmModule.validate_diagnostics_json;
+  shapeTargetNodesJson = wasmModule.shape_target_nodes_json;
+  explainCodeJson = wasmModule.explain_code_json;
+  whyJson = wasmModule.why_json;
   lintDataGraph = wasmModule.lint_data_graph;
   lintShapesGraph = wasmModule.lint_shapes_graph;
 }
@@ -304,7 +463,18 @@ function buildEditors() {
 async function bootstrap() {
   syncRdfOutputVisibility();
   outputTypeEl.addEventListener("change", syncRdfOutputVisibility);
-  validateBtn.addEventListener("click", validateNow);
+  validateBtn.addEventListener("click", runValidate);
+  rawReportBtnEl.addEventListener("click", generateRawReport);
+  explainCodeBtnEl.addEventListener("click", () => openExplainPanel(explainCodeInputEl.value));
+  explainCodeInputEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      openExplainPanel(explainCodeInputEl.value);
+    }
+  });
+  sidePanelCloseEl.addEventListener("click", closeSidePanel);
+  diagnosticsListEl.addEventListener("click", handleDiagnosticsListClick);
+  shapesPanelBodyEl.addEventListener("click", handleShapesPanelClick);
+  sidePanelBodyEl.addEventListener("click", handleSidePanelClick);
 
   dataFormatEl.addEventListener("change", updateLinting);
   shapesFormatEl.addEventListener("change", updateLinting);
