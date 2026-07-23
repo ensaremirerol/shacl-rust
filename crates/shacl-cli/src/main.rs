@@ -3,11 +3,13 @@ use log::{debug, info};
 use rayon::prelude::*;
 use shacl_rust::{
     core::{shape::Shape, ShapesInfo},
+    diagnostics::{Diagnostic, DiagnosticSeverity},
     err::{path_to_str, ShaclError},
     parser, rdf, validate,
     validation::dataset::ValidationDataset,
 };
 use std::fmt::{Display, Formatter};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 /// SHACL (Shapes Constraint Language) validator and toolkit
@@ -78,6 +80,18 @@ enum Commands {
         /// instead of an oxigraph Graph (faster and leaner on large graphs)
         #[arg(long)]
         experimental_index: bool,
+
+        /// Diagnostics output on stderr: text, json (NDJSON), or none
+        #[arg(long, default_value = "text")]
+        diagnostics: String,
+
+        /// Skip shape lints during validation
+        #[arg(long)]
+        skip_lint: bool,
+
+        /// Exit with code 2 when shape lints report warnings or errors
+        #[arg(long)]
+        deny_warnings: bool,
     },
 
     /// Show information about SHACL shapes
@@ -94,6 +108,22 @@ enum Commands {
         /// Show detailed statistics
         #[arg(short, long)]
         detailed: bool,
+    },
+
+    /// Lint a shapes graph without validating data
+    Lint {
+        #[arg(value_name = "SHAPES_FILE")]
+        shapes_file: PathBuf,
+        #[arg(short, long)]
+        format: Option<String>,
+        #[arg(long, default_value = "text")]
+        diagnostics: String,
+    },
+
+    /// Explain a diagnostic code (e.g. V0007, L0002)
+    Explain {
+        #[arg(value_name = "CODE")]
+        code: String,
     },
 }
 
@@ -134,6 +164,9 @@ fn main() -> Result<(), ShaclError> {
             output_format,
             quiet: _,
             experimental_index,
+            diagnostics,
+            skip_lint,
+            deny_warnings,
         } => {
             info!("Validating {} data file(s)", data_files.len());
             info!("Using shapes: {}", shapes_file.display());
@@ -145,6 +178,9 @@ fn main() -> Result<(), ShaclError> {
                 output,
                 &output_format,
                 experimental_index,
+                &diagnostics,
+                skip_lint,
+                deny_warnings,
             )
         }
         Commands::Info {
@@ -155,6 +191,15 @@ fn main() -> Result<(), ShaclError> {
             info!("Showing info for shapes: {}", shapes_file.display());
             info_command(shapes_file, format, detailed)
         }
+        Commands::Lint {
+            shapes_file,
+            format,
+            diagnostics,
+        } => {
+            info!("Linting shapes: {}", shapes_file.display());
+            lint_command(shapes_file, format, &diagnostics)
+        }
+        Commands::Explain { code } => explain_command(&code),
     }
 }
 
@@ -290,6 +335,9 @@ fn validate_command(
     output: Option<PathBuf>,
     output_format: &str,
     experimental_index: bool,
+    diagnostics_mode: &str,
+    skip_lint: bool,
+    deny_warnings: bool,
 ) -> Result<(), ShaclError> {
     if experimental_index {
         return validate_command_indexed(
@@ -299,6 +347,9 @@ fn validate_command(
             shapes_format,
             output,
             output_format,
+            diagnostics_mode,
+            skip_lint,
+            deny_warnings,
         );
     }
     let data_graphs_results: Vec<Result<(PathBuf, oxigraph::model::Graph), ShaclError>> =
@@ -365,7 +416,63 @@ fn validate_command(
 
     let report = validate(&validation_dataset, &shapes);
 
+    emit_diagnostics_and_maybe_exit(
+        &report,
+        &validation_dataset,
+        &shapes,
+        diagnostics_mode,
+        skip_lint,
+        deny_warnings,
+    );
+
     emit_report(&report, output, output_format)
+}
+
+/// Lints (unless skipped) + derives diagnostics from the report, renders them
+/// to stderr per `diagnostics_mode`, and exits 2 if `deny_warnings` is set and
+/// any lint diagnostic (code starting with 'L') was produced. This runs
+/// before `emit_report`'s own conformance exit(1), so deny-warnings exit 2
+/// wins over conformance exit 1.
+fn emit_diagnostics_and_maybe_exit(
+    report: &shacl_rust::ValidationReport<'_>,
+    validation_dataset: &ValidationDataset,
+    shapes: &[Shape<'_>],
+    diagnostics_mode: &str,
+    skip_lint: bool,
+    deny_warnings: bool,
+) {
+    let mut all_diags = Vec::new();
+    if !skip_lint {
+        all_diags.extend(shacl_rust::diagnostics::lint_shapes(
+            validation_dataset.shapes_graph(),
+            shapes,
+        ));
+    }
+    all_diags.extend(shacl_rust::diagnostics::from_report(
+        report,
+        validation_dataset,
+        shapes,
+    ));
+    shacl_rust::diagnostics::sort_diagnostics(&mut all_diags);
+
+    emit_diagnostics(&all_diags, diagnostics_mode);
+
+    let lint_warnings = all_diags.iter().any(|d| d.code.starts_with('L'));
+    if deny_warnings && lint_warnings {
+        std::process::exit(2);
+    }
+}
+
+/// Renders `diags` to stderr per `mode` ("text", "json"/NDJSON, or "none").
+fn emit_diagnostics(diags: &[Diagnostic], mode: &str) {
+    match mode {
+        "json" => eprint!("{}", shacl_rust::diagnostics::render_ndjson(diags)),
+        "none" => {}
+        _ => {
+            let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            eprint!("{}", shacl_rust::diagnostics::render_text(diags, color));
+        }
+    }
 }
 
 fn emit_report(
@@ -426,6 +533,7 @@ fn emit_report(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_command_indexed(
     shapes_file: PathBuf,
     data_files: Vec<PathBuf>,
@@ -433,6 +541,9 @@ fn validate_command_indexed(
     shapes_format: Option<String>,
     output: Option<PathBuf>,
     output_format: &str,
+    diagnostics_mode: &str,
+    skip_lint: bool,
+    deny_warnings: bool,
 ) -> Result<(), ShaclError> {
     // Open every data file as a streaming parser; the serialized text is
     // never held in memory.
@@ -487,7 +598,68 @@ fn validate_command_indexed(
     info!("Parsed {} shapes", shapes.len());
 
     let report = validate(&validation_dataset, &shapes);
+
+    emit_diagnostics_and_maybe_exit(
+        &report,
+        &validation_dataset,
+        &shapes,
+        diagnostics_mode,
+        skip_lint,
+        deny_warnings,
+    );
+
     emit_report(&report, output, output_format)
+}
+
+fn lint_command(
+    shapes_file: PathBuf,
+    format: Option<String>,
+    diagnostics_mode: &str,
+) -> Result<(), ShaclError> {
+    let graph = read_graph_from_file(&shapes_file, format.as_deref())?;
+    info!("Shapes graph loaded with {} triples", graph.len());
+
+    let shapes = parser::parse_shapes(&graph)?;
+    info!("Parsed {} shapes", shapes.len());
+
+    let mut diags = shacl_rust::diagnostics::lint_shapes(&graph, &shapes);
+    shacl_rust::diagnostics::sort_diagnostics(&mut diags);
+
+    emit_diagnostics(&diags, diagnostics_mode);
+
+    if diags
+        .iter()
+        .any(|d| d.severity == DiagnosticSeverity::Error)
+    {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn explain_command(code: &str) -> Result<(), ShaclError> {
+    match shacl_rust::diagnostics::entry(code) {
+        Some(entry) => {
+            println!("{}: {}", entry.code, entry.title);
+            if let Some(component) = entry.component {
+                println!("component: {}", component);
+            }
+            println!("spec: {}", entry.spec_ref);
+            println!();
+            println!("{}", entry.explanation);
+            println!();
+            println!("== failing example ==");
+            println!("{}", entry.failing_example);
+            println!();
+            println!("== fix ==");
+            println!("{}", entry.fixed_example);
+            Ok(())
+        }
+        None => {
+            eprintln!("Unknown diagnostic code: {}", code);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn read_graph_from_file(
