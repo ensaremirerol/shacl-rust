@@ -388,6 +388,15 @@ impl<'a> ValidationResult<'a> {
         self.source_constraint_component
     }
 
+    /// The human-readable detail string the validator recorded for this
+    /// result (e.g. `"sh:class <urn:Person>"`), when its constraint
+    /// component supplies one. Used to disambiguate results whose shape and
+    /// component match but that stem from different constraint instances -
+    /// see `diagnostics::explain_pass::matches_constraint`.
+    pub fn constraint_detail(&self) -> Option<&str> {
+        self.constraint_detail.as_deref()
+    }
+
     pub fn result_path(&self) -> Option<&Path<'a>> {
         self.result_path.as_ref()
     }

@@ -244,15 +244,62 @@ fn find_matching_result<'a, 'b>(
 /// either `SPARQLConstraintComponent` or a query-supplied custom component
 /// (which falls back to the registry's `V0000`). Every other constraint maps
 /// onto exactly one component/code.
+///
+/// A shared component code alone isn't always enough: a shape can carry
+/// several constraints of the *same* component on the same path - e.g.
+/// `sh:class ex:Person, ex:Employee` parses into two separate
+/// `Constraint::Class` instances, one per value (see
+/// `parser/constraints/class.rs`, which calls `objects_for_subject_predicate`
+/// rather than the singular `object_for_subject_predicate`). Matching by
+/// component code alone would attribute *both* traces to whichever one of
+/// the two results happens to come first, even the one that conforms. So
+/// once the component matches, `constraint_detail` further requires the
+/// constraint's own identifying detail (when it has one) to match the
+/// detail the validator recorded on the result.
 fn matches_constraint(result: &ValidationResult<'_>, constraint: &Constraint<'_>) -> bool {
     let code = match result.source_constraint_component() {
         Some(iri) => registry::code_for_component(iri.as_str()),
         None => "V0000",
     };
-    match constraint {
+    let component_matches = match constraint {
         Constraint::QualifiedValueShape(_) => code == "V0022" || code == "V0023",
         Constraint::Sparql(_) => code == "V0029" || code == "V0000",
         other => code == registry::code_for_component(constraint_component_iri(other)),
+    };
+    component_matches
+        && match constraint_detail(constraint) {
+            // The constraint has an identifying detail (formatted exactly as
+            // the validator's `.detail(...)` call for that component - see
+            // `validation/constraints/{class,has_value,datatype,node_kind}.rs`).
+            // Only a result recorded with that same detail belongs to this
+            // constraint instance. A result with no detail can't be matched
+            // this way - conservatively excluded rather than assumed to
+            // match, since only components that only ever appear once per
+            // shape (so misattribution can't happen) skip recording one.
+            Some(detail) => result.constraint_detail() == Some(detail.as_str()),
+            None => true,
+        }
+}
+
+/// The identifying detail string for constraint variants whose parser can
+/// produce more than one instance per shape/path (`Constraint::Class` and
+/// `Constraint::HasValue`; see `parser/constraints/class.rs` and
+/// `parser/constraints/has_value.rs`, both of which iterate
+/// `objects_for_subject_predicate` rather than taking a single object).
+/// `Constraint::Datatype` and `Constraint::NodeKind` also record a detail on
+/// their results but their parsers take only a single object per shape
+/// (`object_for_subject_predicate`), so they can never actually duplicate;
+/// their detail is still checked here for robustness, at no cost, since it's
+/// always unique per shape when present. Mirrors the `.detail(format!(...))`
+/// calls in the corresponding `validation/constraints/*.rs` files - keep the
+/// two in sync.
+fn constraint_detail(constraint: &Constraint<'_>) -> Option<String> {
+    match constraint {
+        Constraint::Class(c) => Some(format!("sh:class {}", c.0)),
+        Constraint::HasValue(c) => Some(format!("sh:hasValue {}", c.0)),
+        Constraint::Datatype(c) => Some(format!("sh:datatype {}", c.0)),
+        Constraint::NodeKind(c) => Some(format!("sh:nodeKind {}", c.0)),
+        _ => None,
     }
 }
 
