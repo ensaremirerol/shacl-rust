@@ -4,7 +4,7 @@
 //! `sh:sourceConstraintComponent` onto a stable registry code, and fills in
 //! an expected/actual/help summary from a small per-component table.
 
-use oxigraph::model::{NamedOrBlankNodeRef, TermRef};
+use oxigraph::model::{Graph, NamedOrBlankNodeRef, TermRef};
 
 use crate::core::path::PathElement;
 use crate::validation::dataset::ValidationDataset;
@@ -57,8 +57,11 @@ fn derive_one<'a>(
 
     // Rule 5: shapes snippet, plus the constraint-object "bound" lookup that
     // rule 6 needs (e.g. the object of the sh:minInclusive triple).
-    let (shapes_snippet, bound) =
-        build_shapes_snippet(dataset, result.source_shape(), keyword.as_deref());
+    let (shapes_snippet, bound) = build_shapes_snippet(
+        dataset.shapes_graph(),
+        result.source_shape(),
+        keyword.as_deref(),
+    );
 
     // Rule 6: expected/actual/help table, keyed by component keyword.
     let table = component_table(
@@ -185,16 +188,15 @@ fn first_path_predicate<'a>(path: &Path<'a>) -> String {
 /// Rule 5: up to 8 triples of the source shape node, rendered as Turtle, plus
 /// the object of whichever triple's predicate matches the component keyword
 /// via [`select_predicate_index`] (rule 6's "bound" lookup).
-fn build_shapes_snippet<'a>(
-    dataset: &'a ValidationDataset,
+///
+/// Shared with the shape linter (`lint.rs`), which has only a shapes `Graph`
+/// (no `ValidationDataset`) and no per-component "bound" to look up.
+pub(crate) fn build_shapes_snippet<'a>(
+    graph: &'a Graph,
     source_shape: NamedOrBlankNodeRef<'a>,
     keyword: Option<&str>,
 ) -> (Option<Snippet>, Option<String>) {
-    let triples: Vec<_> = dataset
-        .shapes_graph()
-        .triples_for_subject(source_shape)
-        .take(8)
-        .collect();
+    let triples: Vec<_> = graph.triples_for_subject(source_shape).take(8).collect();
     if triples.is_empty() {
         return (None, None);
     }
@@ -272,7 +274,7 @@ struct ComponentTable {
 /// period), so that explanations like `"...(e.g. en matches en-NZ). Second
 /// sentence."` truncate after the real sentence rather than after `"(e.g"`.
 /// Falls back to the whole text when no such boundary is found.
-fn first_sentence(text: &str) -> &str {
+pub(crate) fn first_sentence(text: &str) -> &str {
     let mut search_start = 0usize;
     while let Some(rel) = text[search_start..].find(". ") {
         let period_idx = search_start + rel;
