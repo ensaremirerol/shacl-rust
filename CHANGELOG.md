@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.9](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.8...shacl-rust-v0.2.9) (2026-07-24)
+
+
+### Features
+
+* show the traced NodeShape itself in why-trace output ([11d8c46](https://github.com/ensaremirerol/shacl-rust/commit/11d8c46a28e11221dd645290d896e7fe9a16f086))
+
+
+### Bug Fixes
+
+* build the SPARQL validation store once under contention, not per thread ([2bd0f73](https://github.com/ensaremirerol/shacl-rust/commit/2bd0f73750b4b6f60d6237582edf0b4ab1831ebd))
+* default skip_lint in MCP schema; cross-reference datatype+range diagnostics ([f1f430a](https://github.com/ensaremirerol/shacl-rust/commit/f1f430a109be7b2b62191d3c13e8a4f3a1bad190))
+
+
+### Documentation
+
+* implementation plan for MCP diagnostics tools ([0ed72bc](https://github.com/ensaremirerol/shacl-rust/commit/0ed72bc4a13a9caca1c2d7b9e7f29e4cd078a6a0))
+
 ## [0.2.8](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.7...shacl-rust-v0.2.8) (2026-07-23)
 
 
