@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.15](https://github.com/ensaremirerol/shacl-rust/compare/shacl-wasm-v0.1.14...shacl-wasm-v0.1.15) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.8 to 0.2.9
+
 ## [0.1.14](https://github.com/ensaremirerol/shacl-rust/compare/shacl-wasm-v0.1.13...shacl-wasm-v0.1.14) (2026-07-23)
 
 

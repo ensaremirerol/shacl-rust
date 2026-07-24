@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.9](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.2.8...shacl-mcp-v0.2.9) (2026-07-24)
+
+
+### Features
+
+* **mcp:** add validate_diagnostics/lint_shacl_shapes/explain_diagnostic_code/why_conformance tools ([ddf440f](https://github.com/ensaremirerol/shacl-rust/commit/ddf440f4b7c5ae93e3614fc0fff8cf8ec68d6b33))
+
+
+### Bug Fixes
+
+* default skip_lint in MCP schema; cross-reference datatype+range diagnostics ([f1f430a](https://github.com/ensaremirerol/shacl-rust/commit/f1f430a109be7b2b62191d3c13e8a4f3a1bad190))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.8 to 0.2.9
+
 ## [0.2.8](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.2.7...shacl-mcp-v0.2.8) (2026-07-23)
 
 
