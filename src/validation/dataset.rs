@@ -21,7 +21,9 @@ pub struct ValidationDataset {
     // Built lazily on first `store()` call: only SPARQL-based constraints read it,
     // and building it copies both graphs into the store. Shared across clones so
     // it is built at most once per dataset.
-    store: Arc<OnceLock<Arc<Store>>>,
+    store: Arc<OnceLock<Result<Arc<Store>, String>>>,
+    // Number of times the store has actually been built; must never exceed 1.
+    store_builds: std::sync::atomic::AtomicUsize,
     data: DataBackend,
     shapes_graph: Graph,
 }
@@ -30,6 +32,7 @@ impl ValidationDataset {
     pub fn from_graphs(data_graph: Graph, shapes_graph: Graph) -> Result<Self, ShaclError> {
         Ok(Self {
             store: Arc::new(OnceLock::new()),
+            store_builds: std::sync::atomic::AtomicUsize::new(0),
             data: DataBackend::Graph(data_graph),
             shapes_graph,
         })
@@ -44,6 +47,7 @@ impl ValidationDataset {
         let index = IndexedGraph::from_graph(&data_graph);
         Ok(Self {
             store: Arc::new(OnceLock::new()),
+            store_builds: std::sync::atomic::AtomicUsize::new(0),
             data: DataBackend::Indexed(index),
             shapes_graph,
         })
@@ -58,6 +62,7 @@ impl ValidationDataset {
     ) -> Result<Self, ShaclError> {
         Ok(Self {
             store: Arc::new(OnceLock::new()),
+            store_builds: std::sync::atomic::AtomicUsize::new(0),
             data: DataBackend::Indexed(IndexedGraph::from_triples(data_triples)),
             shapes_graph,
         })
@@ -72,13 +77,22 @@ impl ValidationDataset {
     }
 
     pub fn store(&self) -> Result<Arc<Store>, ShaclError> {
-        if let Some(store) = self.store.get() {
-            return Ok(Arc::clone(store));
+        // The build runs inside the OnceLock initializer so concurrent callers
+        // block on the one in-flight build instead of each materializing their
+        // own copy of the dataset (which multiplies peak memory by the number
+        // of racing threads). A build failure is cached too: retrying cannot
+        // succeed, since the inputs don't change.
+        let result = self.store.get_or_init(|| {
+            self.store_builds
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Self::build_store(self.data(), &self.shapes_graph)
+                .map(Arc::new)
+                .map_err(|e| e.to_string())
+        });
+        match result {
+            Ok(store) => Ok(Arc::clone(store)),
+            Err(message) => Err(ShaclError::Io(message.clone())),
         }
-        let built = Arc::new(Self::build_store(self.data(), &self.shapes_graph)?);
-        // Under contention another thread may have won the race; get_or_init
-        // returns the stored value either way.
-        Ok(Arc::clone(self.store.get_or_init(|| built)))
     }
 
     fn build_store(data: DataView<'_>, shapes_graph: &Graph) -> Result<Store, ShaclError> {
@@ -112,5 +126,45 @@ impl ValidationDataset {
 
     pub fn shapes_graph(&self) -> &Graph {
         &self.shapes_graph
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxigraph::model::{NamedNode, TripleRef};
+    use std::sync::atomic::Ordering;
+    use std::sync::Barrier;
+
+    /// Concurrent `store()` callers must not each build their own copy of the
+    /// store: the build materializes the full dataset, so N racing builders
+    /// multiply peak memory by N (the cause of the era-es-tds 40x blowup).
+    #[test]
+    fn concurrent_store_calls_build_store_once() {
+        let mut data_graph = Graph::new();
+        for i in 0..100 {
+            let s = NamedNode::new(format!("http://example.org/s{i}")).unwrap();
+            let p = NamedNode::new("http://example.org/p").unwrap();
+            let o = NamedNode::new(format!("http://example.org/o{i}")).unwrap();
+            data_graph.insert(TripleRef::new(&s, &p, &o));
+        }
+        let dataset = ValidationDataset::from_graphs(data_graph, Graph::new()).unwrap();
+
+        let threads = 16;
+        let barrier = Barrier::new(threads);
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| {
+                    barrier.wait();
+                    dataset.store().unwrap();
+                });
+            }
+        });
+
+        assert_eq!(
+            dataset.store_builds.load(Ordering::SeqCst),
+            1,
+            "store must be built exactly once even under concurrent access"
+        );
     }
 }
