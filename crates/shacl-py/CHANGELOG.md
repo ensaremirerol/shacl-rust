@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/ensaremirerol/shacl-rust/compare/shacl-py-v0.2.6...shacl-py-v0.2.7) (2026-07-28)
+
+
+### Miscellaneous
+
+* release main ([3222bc3](https://github.com/ensaremirerol/shacl-rust/commit/3222bc3047ece5910d130bd9cb8bd79440cd89f8))
+
 ## [0.2.6](https://github.com/ensaremirerol/shacl-rust/compare/shacl-py-v0.2.5...shacl-py-v0.2.6) (2026-07-23)
 
 
