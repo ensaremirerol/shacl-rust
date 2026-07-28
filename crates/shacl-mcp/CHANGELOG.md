@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.10](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.2.9...shacl-mcp-v0.2.10) (2026-07-28)
+
+
+### Features
+
+* **mcp:** file-path inputs, shape-file batching, diagnostic summaries ([e1fb3dc](https://github.com/ensaremirerol/shacl-rust/commit/e1fb3dccdb4e1e8eb02c21e2746b0487be890ea2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.9 to 0.2.10
+
 ## [0.2.9](https://github.com/ensaremirerol/shacl-rust/compare/shacl-mcp-v0.2.8...shacl-mcp-v0.2.9) (2026-07-24)
 
 

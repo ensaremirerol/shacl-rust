@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.9...shacl-rust-v0.2.10) (2026-07-28)
+
+
+### Features
+
+* **mcp:** file-path inputs, shape-file batching, diagnostic summaries ([e1fb3dc](https://github.com/ensaremirerol/shacl-rust/commit/e1fb3dccdb4e1e8eb02c21e2746b0487be890ea2))
+
 ## [0.2.9](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.8...shacl-rust-v0.2.9) (2026-07-24)
 
 
