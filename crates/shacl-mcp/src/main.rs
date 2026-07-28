@@ -25,7 +25,9 @@ pub struct ShaclServer {
 /// extension when a path is given and `data_format` is omitted.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 struct DataGraphInput {
-    #[schemars(description = "RDF data graph as an inline string. Mutually exclusive with `data_path`.")]
+    #[schemars(
+        description = "RDF data graph as an inline string. Mutually exclusive with `data_path`."
+    )]
     #[serde(default)]
     data_graph: Option<String>,
     #[schemars(
@@ -97,7 +99,9 @@ struct ValidateGraphsConformsArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(description = "Arguments for validating RDF graph syntax")]
 struct LintGraphArgs {
-    #[schemars(description = "RDF graph as an inline string. Mutually exclusive with `graph_path`.")]
+    #[schemars(
+        description = "RDF graph as an inline string. Mutually exclusive with `graph_path`."
+    )]
     #[serde(default)]
     graph: Option<String>,
     #[schemars(description = "Path to an RDF file on disk, as an alternative to inline `graph`.")]
@@ -203,8 +207,12 @@ fn resolve_graph_source(
 }
 
 fn resolve_data_graph(input: DataGraphInput) -> Result<oxigraph::model::Graph, String> {
-    let (content, fmt) =
-        resolve_graph_source("data_graph", input.data_graph, input.data_path, input.data_format)?;
+    let (content, fmt) = resolve_graph_source(
+        "data_graph",
+        input.data_graph,
+        input.data_path,
+        input.data_format,
+    )?;
     read_graph_from_string(&content, &fmt).map_err(|e| format!("Failed to parse data graph: {e}"))
 }
 
@@ -637,13 +645,8 @@ mod tests {
 
     #[test]
     fn resolve_graph_source_inline_requires_format() {
-        let err = resolve_graph_source(
-            "data_graph",
-            Some("<a> <b> <c> .".to_string()),
-            None,
-            None,
-        )
-        .unwrap_err();
+        let err = resolve_graph_source("data_graph", Some("<a> <b> <c> .".to_string()), None, None)
+            .unwrap_err();
         assert!(err.contains("data_graph_format"), "unexpected error: {err}");
     }
 
@@ -663,10 +666,7 @@ mod tests {
     #[test]
     fn resolve_graph_source_path_infers_format_from_extension() {
         let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "shacl_mcp_test_{}.nt",
-            std::process::id()
-        ));
+        let path = dir.join(format!("shacl_mcp_test_{}.nt", std::process::id()));
         std::fs::write(&path, "<urn:a> <urn:b> <urn:c> .\n").unwrap();
 
         let (content, fmt) = resolve_graph_source(
