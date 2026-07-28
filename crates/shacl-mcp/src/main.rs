@@ -20,17 +20,65 @@ pub struct ShaclServer {
     tool_router: ToolRouter<Self>,
 }
 
+/// Shared field set for supplying a single RDF data graph: inline content or
+/// a file path (mutually exclusive), with format inferred from the path's
+/// extension when a path is given and `data_format` is omitted.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+struct DataGraphInput {
+    #[schemars(description = "RDF data graph as an inline string. Mutually exclusive with `data_path`.")]
+    #[serde(default)]
+    data_graph: Option<String>,
+    #[schemars(
+        description = "Path to an RDF data file on disk, as an alternative to inline `data_graph` (avoids re-pasting large/shared graphs into every call)."
+    )]
+    #[serde(default)]
+    data_path: Option<String>,
+    #[schemars(
+        description = "Format of the data graph (e.g., 'ttl', 'nt', 'jsonld'). Required when passing `data_graph` inline; inferred from the file extension for `data_path` if omitted."
+    )]
+    #[serde(default)]
+    data_format: Option<String>,
+}
+
+/// Shared field set for supplying one or more SHACL shapes graphs: inline
+/// content, a file path, or arrays of either (merged server-side) — useful
+/// when a project splits shapes across a base vocabulary plus extensions.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+struct ShapesGraphInput {
+    #[schemars(
+        description = "SHACL shapes graph as an inline string. Mutually exclusive with `shapes_path`."
+    )]
+    #[serde(default)]
+    shapes_graph: Option<String>,
+    #[schemars(
+        description = "Path to a SHACL shapes file on disk, as an alternative to inline `shapes_graph`."
+    )]
+    #[serde(default)]
+    shapes_path: Option<String>,
+    #[schemars(
+        description = "Multiple SHACL shapes graphs as inline strings, merged server-side into one shapes graph (e.g. a base vocabulary plus project extensions). Combine with `shapes_graph`/`shapes_path`/`shapes_paths` freely; all given sources are merged."
+    )]
+    #[serde(default)]
+    shapes_graphs: Option<Vec<String>>,
+    #[schemars(
+        description = "Multiple SHACL shapes files on disk, merged server-side into one shapes graph."
+    )]
+    #[serde(default)]
+    shapes_paths: Option<Vec<String>>,
+    #[schemars(
+        description = "Format shared by all inline/path shapes sources above (e.g., 'ttl', 'nt', 'jsonld'). Required for inline sources; inferred per-file from extension for path sources if omitted."
+    )]
+    #[serde(default)]
+    shapes_format: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(description = "Arguments for validating RDF data against SHACL shapes")]
 struct ValidateGraphsArgs {
-    #[schemars(description = "RDF data graph as a string")]
-    data_graph: String,
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the data graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    data_format: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    data: DataGraphInput,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
     #[schemars(
         description = "Format of the output report ('text', 'json', or RDF format like 'ttl')"
     )]
@@ -40,32 +88,33 @@ struct ValidateGraphsArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(description = "Arguments for checking if RDF data conforms to SHACL shapes")]
 struct ValidateGraphsConformsArgs {
-    #[schemars(description = "RDF data graph as a string")]
-    data_graph: String,
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the data graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    data_format: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    data: DataGraphInput,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(description = "Arguments for validating RDF graph syntax")]
 struct LintGraphArgs {
-    #[schemars(description = "RDF graph as a string")]
-    graph: String,
-    #[schemars(description = "Format of the graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    format: String,
+    #[schemars(description = "RDF graph as an inline string. Mutually exclusive with `graph_path`.")]
+    #[serde(default)]
+    graph: Option<String>,
+    #[schemars(description = "Path to an RDF file on disk, as an alternative to inline `graph`.")]
+    #[serde(default)]
+    graph_path: Option<String>,
+    #[schemars(
+        description = "Format of the graph (e.g., 'ttl', 'nt', 'jsonld'). Required for inline `graph`; inferred from the file extension for `graph_path` if omitted."
+    )]
+    #[serde(default)]
+    format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(description = "Arguments for parsing SHACL shapes graph")]
 struct ParseShapesGraphArgs {
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -73,14 +122,10 @@ struct ParseShapesGraphArgs {
     description = "Arguments for validating RDF data against SHACL shapes and returning rich diagnostics"
 )]
 struct ValidateDiagnosticsArgs {
-    #[schemars(description = "RDF data graph as a string")]
-    data_graph: String,
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the data graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    data_format: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    data: DataGraphInput,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
     #[schemars(
         description = "Skip the 12 semantic shape-lint rules and only return validation diagnostics (default: false)"
     )]
@@ -93,10 +138,8 @@ struct ValidateDiagnosticsArgs {
     description = "Arguments for linting a SHACL shapes graph with the semantic shape-lint rules"
 )]
 struct LintShaclShapesArgs {
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -111,18 +154,146 @@ struct ExplainDiagnosticCodeArgs {
     description = "Arguments for tracing why a focus node does or does not conform to SHACL shapes"
 )]
 struct WhyConformanceArgs {
-    #[schemars(description = "RDF data graph as a string")]
-    data_graph: String,
-    #[schemars(description = "SHACL shapes graph as a string")]
-    shapes_graph: String,
-    #[schemars(description = "Format of the data graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    data_format: String,
-    #[schemars(description = "Format of the shapes graph (e.g., 'ttl', 'nt', 'jsonld')")]
-    shapes_format: String,
+    #[serde(flatten)]
+    data: DataGraphInput,
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
     #[schemars(description = "IRI of the focus node to trace, e.g. 'http://example.org/alice'")]
     focus_node: String,
     #[schemars(description = "Optional IRI of a single shape to restrict the trace to")]
     shape: Option<String>,
+}
+
+fn format_from_path(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_string)
+}
+
+/// Resolves one RDF graph input that may be given inline or as a file path
+/// (mutually exclusive), inferring the format from the path's extension when
+/// a format isn't given. Returns the raw text and the effective format.
+fn resolve_graph_source(
+    field: &str,
+    inline: Option<String>,
+    path: Option<String>,
+    format: Option<String>,
+) -> Result<(String, String), String> {
+    match (inline, path) {
+        (Some(_), Some(_)) => Err(format!(
+            "Provide either `{field}` or `{field}_path`, not both"
+        )),
+        (Some(content), None) => {
+            let fmt = format.ok_or_else(|| {
+                format!("`{field}_format` is required when passing `{field}` inline")
+            })?;
+            Ok((content, fmt))
+        }
+        (None, Some(path)) => {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read `{field}_path` '{path}': {e}"))?;
+            let fmt = format.or_else(|| format_from_path(&path)).ok_or_else(|| {
+                format!("Could not infer RDF format for '{path}'; provide `{field}_format`")
+            })?;
+            Ok((content, fmt))
+        }
+        (None, None) => Err(format!("Provide either `{field}` or `{field}_path`")),
+    }
+}
+
+fn resolve_data_graph(input: DataGraphInput) -> Result<oxigraph::model::Graph, String> {
+    let (content, fmt) =
+        resolve_graph_source("data_graph", input.data_graph, input.data_path, input.data_format)?;
+    read_graph_from_string(&content, &fmt).map_err(|e| format!("Failed to parse data graph: {e}"))
+}
+
+/// Resolves a [`ShapesGraphInput`], parsing every inline/path source given
+/// (singular and/or plural fields) and merging them into one shapes graph.
+fn resolve_shapes_graph(input: ShapesGraphInput) -> Result<oxigraph::model::Graph, String> {
+    let mut sources: Vec<(Option<String>, Option<String>)> = Vec::new();
+    if input.shapes_graph.is_some() || input.shapes_path.is_some() {
+        sources.push((input.shapes_graph, input.shapes_path));
+    }
+    for g in input.shapes_graphs.into_iter().flatten() {
+        sources.push((Some(g), None));
+    }
+    for p in input.shapes_paths.into_iter().flatten() {
+        sources.push((None, Some(p)));
+    }
+    if sources.is_empty() {
+        return Err(
+            "Provide one of `shapes_graph`, `shapes_path`, `shapes_graphs`, `shapes_paths`"
+                .to_string(),
+        );
+    }
+
+    let mut merged = oxigraph::model::Graph::new();
+    for (inline, path) in sources {
+        let (content, fmt) =
+            resolve_graph_source("shapes_graph", inline, path, input.shapes_format.clone())?;
+        let parsed = read_graph_from_string(&content, &fmt)
+            .map_err(|e| format!("Failed to parse shapes graph: {e}"))?;
+        for triple in parsed.iter() {
+            merged.insert(triple);
+        }
+    }
+    Ok(merged)
+}
+
+/// Enriches the JSON rendering of the first [`shacl_rust::diagnostics::Diagnostic`]
+/// for each distinct code with the registry's spec reference and
+/// failing/fixed Turtle examples, so a caller rarely needs a follow-up
+/// `explain_diagnostic_code` call — only later occurrences of an
+/// already-seen code omit it, keeping the response from repeating the same
+/// explanation once per violation.
+fn attach_first_occurrence_explanations(
+    json_array: &mut [serde_json::Value],
+    diagnostics: &[shacl_rust::diagnostics::Diagnostic],
+) {
+    let mut seen = std::collections::HashSet::new();
+    for (value, diagnostic) in json_array.iter_mut().zip(diagnostics.iter()) {
+        if !seen.insert(diagnostic.code) {
+            continue;
+        }
+        let Some(entry) = shacl_rust::diagnostics::entry(diagnostic.code) else {
+            continue;
+        };
+        let Some(obj) = value.as_object_mut() else {
+            continue;
+        };
+        obj.insert(
+            "reference".to_string(),
+            json!({
+                "spec_ref": entry.spec_ref,
+                "explanation": entry.explanation,
+                "failing_example": entry.failing_example,
+                "fixed_example": entry.fixed_example,
+            }),
+        );
+    }
+}
+
+fn severity_summary(diagnostics: &[shacl_rust::diagnostics::Diagnostic]) -> serde_json::Value {
+    use shacl_rust::diagnostics::DiagnosticSeverity;
+    let errors = diagnostics
+        .iter()
+        .filter(|d| d.severity == DiagnosticSeverity::Error)
+        .count();
+    let warnings = diagnostics
+        .iter()
+        .filter(|d| d.severity == DiagnosticSeverity::Warning)
+        .count();
+    let info = diagnostics
+        .iter()
+        .filter(|d| d.severity == DiagnosticSeverity::Info)
+        .count();
+    json!({
+        "errors": errors,
+        "warnings": warnings,
+        "info": info,
+        "diagnostic_count": diagnostics.len(),
+    })
 }
 
 impl Default for ShaclServer {
@@ -143,18 +314,13 @@ impl ShaclServer {
     async fn validate_graphs(
         &self,
         Parameters(ValidateGraphsArgs {
-            data_graph,
-            shapes_graph,
-            data_format,
-            shapes_format,
+            data,
+            shapes,
             output_format,
         }): Parameters<ValidateGraphsArgs>,
     ) -> Result<String, String> {
-        let data_graph = read_graph_from_string(&data_graph, &data_format)
-            .map_err(|e| format!("Failed to parse data graph: {}", e))?;
-
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Failed to parse shapes graph: {}", e))?;
+        let data_graph = resolve_data_graph(data)?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)
             .map_err(|e| format!("Failed to create validation dataset: {}", e))?;
@@ -194,18 +360,12 @@ impl ShaclServer {
     )]
     async fn validate_graphs_conforms(
         &self,
-        Parameters(ValidateGraphsConformsArgs {
-            data_graph,
-            shapes_graph,
-            data_format,
-            shapes_format,
-        }): Parameters<ValidateGraphsConformsArgs>,
+        Parameters(ValidateGraphsConformsArgs { data, shapes }): Parameters<
+            ValidateGraphsConformsArgs,
+        >,
     ) -> Result<String, String> {
-        let data_graph = read_graph_from_string(&data_graph, &data_format)
-            .map_err(|e| format!("Failed to parse data graph: {}", e))?;
-
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Failed to parse shapes graph: {}", e))?;
+        let data_graph = resolve_data_graph(data)?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)
             .map_err(|e| format!("Failed to create validation dataset: {}", e))?;
@@ -221,10 +381,14 @@ impl ShaclServer {
     #[tool(description = "Validate RDF graph syntax")]
     async fn lint_graph(
         &self,
-        Parameters(LintGraphArgs { graph, format }): Parameters<LintGraphArgs>,
+        Parameters(LintGraphArgs {
+            graph,
+            graph_path,
+            format,
+        }): Parameters<LintGraphArgs>,
     ) -> Result<String, String> {
-        read_graph_from_string(&graph, &format)
-            .map_err(|e| format!("Graph syntax error: {}", e))?;
+        let (content, fmt) = resolve_graph_source("graph", graph, graph_path, format)?;
+        read_graph_from_string(&content, &fmt).map_err(|e| format!("Graph syntax error: {}", e))?;
 
         Ok(json!({ "valid": true }).to_string())
     }
@@ -232,13 +396,9 @@ impl ShaclServer {
     #[tool(description = "Parse SHACL shapes graph and return parsed shape information")]
     async fn parse_shapes_graph(
         &self,
-        Parameters(ParseShapesGraphArgs {
-            shapes_graph,
-            shapes_format,
-        }): Parameters<ParseShapesGraphArgs>,
+        Parameters(ParseShapesGraphArgs { shapes }): Parameters<ParseShapesGraphArgs>,
     ) -> Result<String, String> {
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Shapes graph syntax error: {}", e))?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let parsed_shapes =
             parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
@@ -252,18 +412,13 @@ impl ShaclServer {
     async fn validate_diagnostics(
         &self,
         Parameters(ValidateDiagnosticsArgs {
-            data_graph,
-            shapes_graph,
-            data_format,
-            shapes_format,
+            data,
+            shapes,
             skip_lint,
         }): Parameters<ValidateDiagnosticsArgs>,
     ) -> Result<String, String> {
-        let data_graph = read_graph_from_string(&data_graph, &data_format)
-            .map_err(|e| format!("Failed to parse data graph: {}", e))?;
-
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Failed to parse shapes graph: {}", e))?;
+        let data_graph = resolve_data_graph(data)?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)
             .map_err(|e| format!("Failed to create validation dataset: {}", e))?;
@@ -285,11 +440,21 @@ impl ShaclServer {
         ));
         shacl_rust::diagnostics::sort_diagnostics(&mut diagnostics);
 
-        let json_array: Vec<serde_json::Value> = diagnostics
+        let mut json_array: Vec<serde_json::Value> = diagnostics
             .iter()
             .map(shacl_rust::diagnostics::diagnostic_to_json)
             .collect();
-        Ok(serde_json::Value::Array(json_array).to_string())
+        attach_first_occurrence_explanations(&mut json_array, &diagnostics);
+
+        let mut summary = severity_summary(&diagnostics);
+        summary["conforms"] = json!(*report.get_conforms());
+        summary["violation_count"] = json!(report.get_results().len());
+
+        Ok(json!({
+            "summary": summary,
+            "diagnostics": json_array,
+        })
+        .to_string())
     }
 
     #[tool(
@@ -297,13 +462,9 @@ impl ShaclServer {
     )]
     async fn lint_shacl_shapes(
         &self,
-        Parameters(LintShaclShapesArgs {
-            shapes_graph,
-            shapes_format,
-        }): Parameters<LintShaclShapesArgs>,
+        Parameters(LintShaclShapesArgs { shapes }): Parameters<LintShaclShapesArgs>,
     ) -> Result<String, String> {
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Shapes graph syntax error: {}", e))?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let shapes =
             parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
@@ -311,15 +472,21 @@ impl ShaclServer {
         let mut diagnostics = shacl_rust::diagnostics::lint_shapes(&shapes_graph, &shapes);
         shacl_rust::diagnostics::sort_diagnostics(&mut diagnostics);
 
-        let json_array: Vec<serde_json::Value> = diagnostics
+        let mut json_array: Vec<serde_json::Value> = diagnostics
             .iter()
             .map(shacl_rust::diagnostics::diagnostic_to_json)
             .collect();
-        Ok(serde_json::Value::Array(json_array).to_string())
+        attach_first_occurrence_explanations(&mut json_array, &diagnostics);
+
+        Ok(json!({
+            "summary": severity_summary(&diagnostics),
+            "diagnostics": json_array,
+        })
+        .to_string())
     }
 
     #[tool(
-        description = "Look up a diagnostic code (e.g. 'V0007') in the registry and return its title, spec reference, explanation, and a failing/fixed Turtle example pair"
+        description = "Look up a diagnostic code (e.g. 'V0007') in the registry and return its title, spec reference, explanation, and a failing/fixed Turtle example pair. Rarely needed standalone: validate_diagnostics and lint_shacl_shapes already embed this same information under a `reference` key on each diagnostic's first occurrence of a given code. Reach for this tool when you need a code's explanation before it's actually triggered — e.g. checking what a rule means while writing shapes."
     )]
     async fn explain_diagnostic_code(
         &self,
@@ -341,24 +508,19 @@ impl ShaclServer {
     }
 
     #[tool(
-        description = "Trace why a focus node does or does not conform to SHACL shapes, constraint by constraint"
+        description = "Trace why a focus node does or does not conform to SHACL shapes, constraint by constraint. Use this specifically when a shape *should* have fired for this node but validate_diagnostics came back empty (or conforms unexpectedly) — it walks every applicable shape/constraint for the node and reports each one's verdict (conforms/violates/not-targeted/vacuous), which pinpoints things validate_diagnostics can't show on its own: a target that silently didn't match, a constraint that silently short-circuited, or a query that silently returned no rows."
     )]
     async fn why_conformance(
         &self,
         Parameters(WhyConformanceArgs {
-            data_graph,
-            shapes_graph,
-            data_format,
-            shapes_format,
+            data,
+            shapes,
             focus_node,
             shape,
         }): Parameters<WhyConformanceArgs>,
     ) -> Result<String, String> {
-        let data_graph = read_graph_from_string(&data_graph, &data_format)
-            .map_err(|e| format!("Failed to parse data graph: {}", e))?;
-
-        let shapes_graph = read_graph_from_string(&shapes_graph, &shapes_format)
-            .map_err(|e| format!("Failed to parse shapes graph: {}", e))?;
+        let data_graph = resolve_data_graph(data)?;
+        let shapes_graph = resolve_shapes_graph(shapes)?;
 
         let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)
             .map_err(|e| format!("Failed to create validation dataset: {}", e))?;
@@ -395,10 +557,12 @@ impl ShaclServer {
             shape_filter,
         );
 
-        let json_array: Vec<serde_json::Value> = diagnostics
+        let mut json_array: Vec<serde_json::Value> = diagnostics
             .iter()
             .map(shacl_rust::diagnostics::diagnostic_to_json)
             .collect();
+        attach_first_occurrence_explanations(&mut json_array, &diagnostics);
+
         Ok(serde_json::Value::Array(json_array).to_string())
     }
 }
@@ -447,4 +611,196 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     shacl_service.waiting().await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_graph_source_rejects_both_inline_and_path() {
+        let err = resolve_graph_source(
+            "data_graph",
+            Some("<a> <b> <c> .".to_string()),
+            Some("/tmp/whatever.ttl".to_string()),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("not both"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn resolve_graph_source_rejects_neither_inline_nor_path() {
+        let err = resolve_graph_source("data_graph", None, None, None).unwrap_err();
+        assert!(err.contains("data_graph_path"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn resolve_graph_source_inline_requires_format() {
+        let err = resolve_graph_source(
+            "data_graph",
+            Some("<a> <b> <c> .".to_string()),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("data_graph_format"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn resolve_graph_source_inline_with_format_ok() {
+        let (content, fmt) = resolve_graph_source(
+            "data_graph",
+            Some("<a> <b> <c> .".to_string()),
+            None,
+            Some("nt".to_string()),
+        )
+        .unwrap();
+        assert_eq!(content, "<a> <b> <c> .");
+        assert_eq!(fmt, "nt");
+    }
+
+    #[test]
+    fn resolve_graph_source_path_infers_format_from_extension() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "shacl_mcp_test_{}.nt",
+            std::process::id()
+        ));
+        std::fs::write(&path, "<urn:a> <urn:b> <urn:c> .\n").unwrap();
+
+        let (content, fmt) = resolve_graph_source(
+            "data_graph",
+            None,
+            Some(path.to_string_lossy().to_string()),
+            None,
+        )
+        .unwrap();
+        assert_eq!(content, "<urn:a> <urn:b> <urn:c> .\n");
+        assert_eq!(fmt, "nt");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn resolve_graph_source_path_reports_missing_file() {
+        let err = resolve_graph_source(
+            "data_graph",
+            None,
+            Some("/nonexistent/shacl_mcp_test_missing.ttl".to_string()),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("Failed to read"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn resolve_shapes_graph_merges_multiple_inline_sources() {
+        let input = ShapesGraphInput {
+            shapes_graph: Some(
+                "@prefix ex: <http://example.org/> . ex:S1 a ex:Shape .".to_string(),
+            ),
+            shapes_path: None,
+            shapes_graphs: Some(vec![
+                "@prefix ex: <http://example.org/> . ex:S2 a ex:Shape .".to_string(),
+            ]),
+            shapes_paths: None,
+            shapes_format: Some("ttl".to_string()),
+        };
+        let graph = resolve_shapes_graph(input).unwrap();
+        assert_eq!(graph.len(), 2, "expected both sources' triples merged");
+    }
+
+    #[test]
+    fn resolve_shapes_graph_requires_at_least_one_source() {
+        let input = ShapesGraphInput {
+            shapes_graph: None,
+            shapes_path: None,
+            shapes_graphs: None,
+            shapes_paths: None,
+            shapes_format: None,
+        };
+        let err = resolve_shapes_graph(input).unwrap_err();
+        assert!(err.contains("Provide one of"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_graphs_args_deserializes_flattened_fields() {
+        let json = serde_json::json!({
+            "data_graph": "<a> <b> <c> .",
+            "data_format": "nt",
+            "shapes_path": "/tmp/shapes.ttl",
+            "shapes_format": "ttl",
+            "output_format": "json",
+        });
+        let args: ValidateGraphsArgs = serde_json::from_value(json).unwrap();
+        assert_eq!(args.data.data_graph.as_deref(), Some("<a> <b> <c> ."));
+        assert_eq!(args.shapes.shapes_path.as_deref(), Some("/tmp/shapes.ttl"));
+        assert_eq!(args.output_format, "json");
+    }
+
+    #[test]
+    fn severity_summary_counts_by_severity() {
+        use shacl_rust::diagnostics::{Diagnostic, DiagnosticSeverity};
+        let make = |severity| Diagnostic {
+            code: "V0000",
+            severity,
+            title: String::new(),
+            constraint_component: None,
+            snippets: Vec::new(),
+            expected: None,
+            actual: None,
+            notes: Vec::new(),
+            help: None,
+            focus_node: None,
+            source_shape: None,
+            path: None,
+            verdict: None,
+        };
+        let diagnostics = vec![
+            make(DiagnosticSeverity::Error),
+            make(DiagnosticSeverity::Error),
+            make(DiagnosticSeverity::Warning),
+            make(DiagnosticSeverity::Info),
+        ];
+        let summary = severity_summary(&diagnostics);
+        assert_eq!(summary["errors"], 2);
+        assert_eq!(summary["warnings"], 1);
+        assert_eq!(summary["info"], 1);
+        assert_eq!(summary["diagnostic_count"], 4);
+    }
+
+    #[test]
+    fn attach_first_occurrence_explanations_only_annotates_first_of_each_code() {
+        use shacl_rust::diagnostics::{Diagnostic, DiagnosticSeverity};
+        let make = |code| Diagnostic {
+            code,
+            severity: DiagnosticSeverity::Error,
+            title: String::new(),
+            constraint_component: None,
+            snippets: Vec::new(),
+            expected: None,
+            actual: None,
+            notes: Vec::new(),
+            help: None,
+            focus_node: None,
+            source_shape: None,
+            path: None,
+            verdict: None,
+        };
+        // V0007 (sh:minInclusive) is a real registry entry; reuse it twice to
+        // check dedup, and pair it with an unknown code to check the no-op path.
+        let diagnostics = vec![make("V0007"), make("V0007")];
+        let mut json_array: Vec<serde_json::Value> = diagnostics
+            .iter()
+            .map(shacl_rust::diagnostics::diagnostic_to_json)
+            .collect();
+        attach_first_occurrence_explanations(&mut json_array, &diagnostics);
+
+        assert!(json_array[0].get("reference").is_some());
+        assert!(
+            json_array[1].get("reference").is_none(),
+            "second occurrence of the same code should not repeat the explanation"
+        );
+    }
 }
