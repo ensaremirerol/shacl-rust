@@ -149,6 +149,11 @@ enum Commands {
         pretty: bool,
     },
 
+    /// Print engine name, version, and supported-feature flags as JSON -
+    /// for a harness that needs to know what this build of shacl-validator
+    /// can do without invoking it against real data first.
+    Capabilities,
+
     /// Explain why a focus node does or does not fail shapes
     Why {
         #[arg(value_name = "SHAPES_FILE")]
@@ -244,6 +249,7 @@ fn main() -> Result<(), ShaclError> {
             format,
             pretty,
         } => decompose_command(shapes_files, format, pretty),
+        Commands::Capabilities => capabilities_command(),
         Commands::Why {
             shapes_file,
             data_file,
@@ -734,6 +740,48 @@ fn decompose_command(
     .map_err(|e| ShaclError::Io(format!("Failed to serialize decomposition: {e}")))?;
     println!("{rendered}");
 
+    Ok(())
+}
+
+/// Feature flags reported by `capabilities_command`: what this build
+/// actually implements, checked against the source rather than asserted -
+/// see the comment above each entry for where that's confirmed. Kept
+/// granular rather than a single "shacl_af: bool", since SHACL-AF as a
+/// spec bundles rules/functions/SHACL-JS (none implemented) together with
+/// SPARQL-based constraints/targets (implemented, and part of the separate
+/// SHACL-SPARQL recommendation) - collapsing those into one flag would
+/// either overclaim or underclaim depending on which half a caller means.
+fn capabilities_command() -> Result<(), ShaclError> {
+    let capabilities = serde_json::json!({
+        "name": "shacl-rust",
+        "version": env!("CARGO_PKG_VERSION"),
+        "capabilities": {
+            // Every SHACL Core constraint/target/logical component - the
+            // full W3C SHACL Core recommendation.
+            "shacl_core": true,
+            // sh:sparql / SPARQLConstraint (src/validation/constraints/sparql.rs).
+            "sparql_constraints": true,
+            // sh:target with sh:select / sh:SPARQLTarget (Target::Sparql,
+            // src/validation/mod.rs's resolve_sparql_target).
+            "sparql_targets": true,
+            // SHACL-AF rules (sh:rule, TripleRule, SPARQLRule) for
+            // inferencing new triples during validation: not implemented -
+            // no parser/validation code beyond the vocabulary's IRI
+            // constants exists for these.
+            "shacl_rules": false,
+            // SHACL-AF functions (sh:function, SPARQLFunction, JSFunction):
+            // not implemented, same basis as shacl_rules.
+            "shacl_functions": false,
+            // SHACL-JS (JSConstraint, JSTarget, JSTargetType): not
+            // implemented, same basis as shacl_rules.
+            "shacl_js": false,
+            // This build's own tooling, not part of any SHACL spec.
+            "decompose": true,
+            "stable_constraint_ids": true,
+            "multi_source_collision_detection": true,
+        },
+    });
+    println!("{capabilities}");
     Ok(())
 }
 
