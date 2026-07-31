@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.11](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.10...shacl-rust-v0.2.11) (2026-07-31)
+
+
+### Features
+
+* **cli:** add `capabilities` subcommand reporting engine name/version/feature flags ([3f5e2d2](https://github.com/ensaremirerol/shacl-rust/commit/3f5e2d26bbf324f3cbef1e9ab1d08d55b40429ef))
+* **lint:** add L0013 for sh:ignoredProperties that isn't a well-formed rdf:List ([009ec26](https://github.com/ensaremirerol/shacl-rust/commit/009ec2640242a7b16da7632bc40ad4ce41e480f7))
+* named-source collision detection (R-3) and two new lint rules (R-4) ([7a38963](https://github.com/ensaremirerol/shacl-rust/commit/7a38963ae0be715b07e275bf9b8ab32666b39f99))
+* shapes decomposition with content-stable IDs (R-1/R-2), fix shacl-mcp --version hang (R-6) ([b1586e3](https://github.com/ensaremirerol/shacl-rust/commit/b1586e3e2a8d837d7a2bd4e73d7746e812389755))
+
 ## [0.2.10](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.9...shacl-rust-v0.2.10) (2026-07-28)
 
 
