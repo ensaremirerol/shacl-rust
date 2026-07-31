@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "shacl-py"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "oxigraph",
  "pyo3",
@@ -1546,6 +1546,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+ "sha2",
  "spargebra",
  "tempfile",
 ]

@@ -126,6 +126,20 @@ enum Commands {
         code: String,
     },
 
+    /// Decompose a shapes graph into structured JSON: one entry per
+    /// individual constraint parameter binding, with content-stable IDs
+    /// independent of blank-node labels, prefixes, or unrelated edits
+    /// elsewhere in the graph.
+    Decompose {
+        #[arg(value_name = "SHAPES_FILE")]
+        shapes_file: PathBuf,
+        #[arg(short, long)]
+        format: Option<String>,
+        /// Pretty-print the JSON output (default: compact, one line)
+        #[arg(long)]
+        pretty: bool,
+    },
+
     /// Explain why a focus node does or does not fail shapes
     Why {
         #[arg(value_name = "SHAPES_FILE")]
@@ -216,6 +230,11 @@ fn main() -> Result<(), ShaclError> {
             lint_command(shapes_file, format, &diagnostics)
         }
         Commands::Explain { code } => explain_command(&code),
+        Commands::Decompose {
+            shapes_file,
+            format,
+            pretty,
+        } => decompose_command(shapes_file, format, pretty),
         Commands::Why {
             shapes_file,
             data_file,
@@ -662,6 +681,29 @@ fn lint_command(
     {
         std::process::exit(1);
     }
+
+    Ok(())
+}
+
+fn decompose_command(
+    shapes_file: PathBuf,
+    format: Option<String>,
+    pretty: bool,
+) -> Result<(), ShaclError> {
+    let graph = read_graph_from_file(&shapes_file, format.as_deref())?;
+    info!("Shapes graph loaded with {} triples", graph.len());
+
+    let shapes = parser::parse_shapes(&graph)?;
+    info!("Parsed {} shapes", shapes.len());
+
+    let decomposed = shacl_rust::decompose_shapes(&shapes, None, graph.len());
+    let rendered = if pretty {
+        serde_json::to_string_pretty(&decomposed)
+    } else {
+        serde_json::to_string(&decomposed)
+    }
+    .map_err(|e| ShaclError::Io(format!("Failed to serialize decomposition: {e}")))?;
+    println!("{rendered}");
 
     Ok(())
 }

@@ -66,6 +66,7 @@ error: 1 error, 0 warnings
 - `shacl-validator lint <shapes.ttl>` — lint a shapes graph for common mistakes (13 rules) without validating any data.
 - `shacl-validator explain V0007` — print a longer explanation of a diagnostic code (validator codes `V0001`-`V00xx`, lint codes `L0001`-`L00xx`).
 - `shacl-validator why <shapes.ttl> <data.ttl> --focus <iri> [--shape <iri>]` — explain why a specific focus node does or does not conform, optionally restricted to one shape.
+- `shacl-validator decompose <shapes.ttl> [--pretty]` — decompose a shapes graph into structured JSON: one entry per individual constraint parameter binding, with content-stable IDs that stay the same across runs, prefix renames, and unrelated edits elsewhere in the graph (unlike `parse`'s blank-node labels, which change every run).
 
 ## License
 

@@ -53,12 +53,21 @@ Validate RDF graph syntax.
 
 ### parse_shapes_graph
 
-Parse SHACL shapes graph and return parsed shape information.
+Parse SHACL shapes graph and return human-readable parsed shape information (counts, targets, constraint summaries). For structured JSON with every individual constraint and stable cross-run IDs, use `decompose_shapes` instead.
 
 **Parameters:**
 - `shapes_graph` / `shapes_path` / `shapes_graphs` / `shapes_paths`, `shapes_format`
 
 **Returns:** Parsed shapes metadata including shape count and details
+
+### decompose_shapes
+
+Decompose a SHACL shapes graph into structured JSON: one entry per individual constraint parameter binding (a property shape with `sh:minCount` + `sh:datatype` yields two entries sharing `owner_property_shape`), with recursive `children` for logical constraints (`sh:and`/`or`/`xone`/`not`/`node`/`qualifiedValueShape`) and content-stable `id`s that stay the same across runs, prefix renames, and unrelated edits elsewhere in the graph — unlike `parse_shapes_graph`'s blank-node labels, which change every run. Use this when you need to join results back to specific constraint declarations (e.g. cross-referencing `validate_diagnostics` output) rather than just a human-readable summary.
+
+**Parameters:**
+- `shapes_graph` / `shapes_path` / `shapes_graphs` / `shapes_paths`, `shapes_format`
+
+**Returns:** `{ "shapes": [...], "stats": { "shapes", "constraints", "triples" } }` — see each shape's `constraints` array for the flattened per-constraint entries (`id`, `component`, `path`, `parameters`, `owner_property_shape`, `severity`, `messages`, `source`, `span`, and `children` for logical constraints).
 
 ### validate_diagnostics
 

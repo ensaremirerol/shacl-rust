@@ -1,4 +1,5 @@
 pub mod core;
+pub mod decompose;
 pub mod diagnostics;
 pub mod err;
 pub mod indexed_graph;
@@ -15,6 +16,7 @@ pub use core::{
     shape::{ClosedConstraint, Shape, ShapeReference},
     target::Target,
 };
+pub use decompose::decompose_shapes;
 pub use err::ShaclError;
 pub use parser::parse_shapes;
 pub use validation::{report::ValidationReport, report::ValidationResult, validate};

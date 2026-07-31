@@ -122,6 +122,13 @@ struct ParseShapesGraphArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(description = "Arguments for structured shapes decomposition")]
+struct DecomposeShapesArgs {
+    #[serde(flatten)]
+    shapes: ShapesGraphInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(
     description = "Arguments for validating RDF data against SHACL shapes and returning rich diagnostics"
 )]
@@ -401,7 +408,9 @@ impl ShaclServer {
         Ok(json!({ "valid": true }).to_string())
     }
 
-    #[tool(description = "Parse SHACL shapes graph and return parsed shape information")]
+    #[tool(
+        description = "Parse SHACL shapes graph and return human-readable parsed shape information (counts, targets, constraint summaries). For structured JSON with every individual constraint and stable cross-run IDs, use decompose_shapes instead."
+    )]
     async fn parse_shapes_graph(
         &self,
         Parameters(ParseShapesGraphArgs { shapes }): Parameters<ParseShapesGraphArgs>,
@@ -412,6 +421,22 @@ impl ShaclServer {
             parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
 
         Ok(ShapesInfo::new(&parsed_shapes, shapes_graph.len(), true).to_string())
+    }
+
+    #[tool(
+        description = "Decompose a SHACL shapes graph into structured JSON: one entry per individual constraint parameter binding (a property shape with sh:minCount + sh:datatype yields two entries sharing owner_property_shape), with recursive `children` for logical constraints (sh:and/or/xone/not/node/qualifiedValueShape) and content-stable `id`s that stay the same across runs, prefix renames, and unrelated edits elsewhere in the graph - unlike parse_shapes_graph's blank-node labels, which change every run. Use this instead of parse_shapes_graph when you need to join results back to specific constraint declarations (e.g. cross-referencing validate_diagnostics output) rather than just a human-readable shape summary."
+    )]
+    async fn decompose_shapes(
+        &self,
+        Parameters(DecomposeShapesArgs { shapes }): Parameters<DecomposeShapesArgs>,
+    ) -> Result<String, String> {
+        let shapes_graph = resolve_shapes_graph(shapes)?;
+
+        let parsed_shapes =
+            parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
+
+        let decomposed = shacl_rust::decompose_shapes(&parsed_shapes, None, shapes_graph.len());
+        Ok(decomposed.to_string())
     }
 
     #[tool(
@@ -602,6 +627,29 @@ impl ServerHandler for ShaclServer {
 // Run the server
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Before touching stdio for the MCP transport: a flag here means someone
+    // ran this as a CLI, not an MCP client connecting a JSON-RPC session -
+    // print and exit instead of silently blocking on stdin waiting for a
+    // request that will never come (which is what happened before this
+    // check existed).
+    let mut args = std::env::args().skip(1);
+    if let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--version" | "-V" => {
+                println!("shacl-mcp {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            "--help" | "-h" => {
+                println!(
+                    "shacl-mcp {}\nMCP (Model Context Protocol) server for shacl-rust.\n\nRuns a JSON-RPC MCP session over stdio; not meant to be invoked interactively.\nSee an MCP client's server configuration for how to launch it.",
+                    env!("CARGO_PKG_VERSION")
+                );
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
         .with_writer(std::io::stderr)

@@ -54,6 +54,10 @@ oxsdatatypes = "0.2"
 spargebra = "0.4.5"
 serde_json = "1.0.149"
 
+# Content-derived stable IDs for decomposed shapes/constraints (already
+# in-tree transitively via oxigraph's oxrdf/spareval)
+sha2 = "0.10"
+
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # RDF handling
 oxigraph = { version = "0.5.5", default-features = false, features = [] }
