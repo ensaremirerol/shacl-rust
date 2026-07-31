@@ -5,6 +5,7 @@ pub mod err;
 pub mod indexed_graph;
 pub mod parser;
 pub mod rdf;
+pub mod sources;
 pub mod utils;
 pub mod validation;
 pub mod vocab;

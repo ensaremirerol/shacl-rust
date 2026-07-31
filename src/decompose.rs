@@ -132,7 +132,7 @@ fn canonical_path(path: &crate::core::path::Path<'_>) -> String {
 
 /// The `sh:*ConstraintComponent` IRI for a parsed constraint, matching the
 /// component every validator already reports on violations for it.
-fn component_iri(constraint: &Constraint<'_>) -> &'static str {
+pub(crate) fn component_iri(constraint: &Constraint<'_>) -> &'static str {
     let nn = match constraint {
         Constraint::Class(_) => sh::CLASS_CONSTRAINT_COMPONENT,
         Constraint::Datatype(_) => sh::DATATYPE_CONSTRAINT_COMPONENT,
@@ -176,8 +176,15 @@ fn component_iri(constraint: &Constraint<'_>) -> &'static str {
 /// nested shapes (`sh:and/or/xone/not/node/qualifiedValueShape`) get their
 /// children decomposed first by the caller; `child_ids` carries the
 /// already-computed, order-preserving IDs to fold in here instead of
-/// re-deriving shape content from inside this function.
-fn constraint_parameters(constraint: &Constraint<'_>, child_ids: &[String]) -> (Value, String) {
+/// re-deriving shape content from inside this function. For any other
+/// (leaf) constraint variant, the canonical string is owner-independent -
+/// safe to compare across different owning shapes, unlike `constraint_id`
+/// itself (which deliberately folds the owner in) - which is exactly what
+/// `diagnostics::lint`'s L0015 (cross-shape duplicate detection) relies on.
+pub(crate) fn constraint_parameters(
+    constraint: &Constraint<'_>,
+    child_ids: &[String],
+) -> (Value, String) {
     match constraint {
         Constraint::Class(c) => {
             let v = c.0.as_str();

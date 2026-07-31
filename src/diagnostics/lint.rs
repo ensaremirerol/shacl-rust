@@ -3,14 +3,15 @@
 //! typos in the `sh:` namespace, contradictory or dead constraints, and
 //! shapes that can never be evaluated. See "Lint rules v1" in
 //! docs/superpowers/specs/2026-07-23-diagnostics-design.md for the spec
-//! table this module implements (L0001-L0012; L0013 added later).
+//! table this module implements (L0001-L0012; L0013-L0015 added later).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use oxigraph::model::{Graph, NamedOrBlankNodeRef, TermRef};
+use oxigraph::model::{Graph, NamedNodeRef, NamedOrBlankNodeRef, TermRef};
 use regex::Regex;
 use spargebra::SparqlParser;
 
+use crate::decompose::{component_iri, constraint_parameters};
 use crate::utils::{
     literal_is_ill_formed, local_name_from_iri, parse_rdf_list, parse_shacl_prefixes,
     term_to_named_or_blank, to_comparable,
@@ -24,7 +25,7 @@ use super::{sort_diagnostics, Diagnostic, DiagnosticSeverity};
 
 const SH_NS: &str = "http://www.w3.org/ns/shacl#";
 
-/// Lints `shapes_graph`/`shapes` against the 13 rules in the spec table,
+/// Lints `shapes_graph`/`shapes` against the 15 rules in the spec table,
 /// returning deterministically sorted diagnostics (empty when clean).
 pub fn lint_shapes<'a>(shapes_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -41,6 +42,8 @@ pub fn lint_shapes<'a>(shapes_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> Vec<
     lint_l0011_dead_shape(shapes_graph, shapes, &mut diags);
     lint_l0012_deactivated(shapes_graph, shapes, &mut diags);
     lint_l0013_malformed_ignored_properties(shapes_graph, &mut diags);
+    lint_l0014_conflicting_single_valued_parameter(shapes_graph, &mut diags);
+    lint_l0015_duplicate_constraint_across_shapes(shapes_graph, shapes, &mut diags);
     sort_diagnostics(&mut diags);
     diags
 }
@@ -645,6 +648,181 @@ fn lint_l0013_malformed_ignored_properties(graph: &Graph, diags: &mut Vec<Diagno
                 Some("ignoredProperties"),
                 Some(triple.object.to_string()),
             );
+        }
+    }
+}
+
+/// Every `sh:` predicate the parser reads via a single-value lookup
+/// (`object_for_subject_predicate`/`get_integer_value`/`get_boolean_value`/
+/// `get_string_value`, per `src/parser/`) - i.e. every predicate where a
+/// second, differing triple on the same subject is silently dropped rather
+/// than reported, because the parser only ever looks up one value.
+const SINGLE_VALUED_PREDICATES: &[(NamedNodeRef<'_>, &str)] = &[
+    (sh::DATATYPE, "datatype"),
+    (sh::NODE_KIND_PROPERTY, "nodeKind"),
+    (sh::MIN_COUNT, "minCount"),
+    (sh::MAX_COUNT, "maxCount"),
+    (sh::MIN_LENGTH, "minLength"),
+    (sh::MAX_LENGTH, "maxLength"),
+    (sh::MIN_INCLUSIVE, "minInclusive"),
+    (sh::MIN_EXCLUSIVE, "minExclusive"),
+    (sh::MAX_INCLUSIVE, "maxInclusive"),
+    (sh::MAX_EXCLUSIVE, "maxExclusive"),
+    (sh::UNIQUE_LANG, "uniqueLang"),
+    (sh::CLOSED, "closed"),
+    (sh::PATTERN, "pattern"),
+    (sh::FLAGS, "flags"),
+    (sh::PATH, "path"),
+    (sh::SEVERITY, "severity"),
+    (sh::DEACTIVATED, "deactivated"),
+];
+
+/// L0014 (Error): a semantically single-valued `sh:` predicate declared more
+/// than once, with differing values, on the same subject - e.g.
+/// `sh:datatype xsd:integer ; sh:datatype xsd:string` on one property shape.
+/// Every predicate in [`SINGLE_VALUED_PREDICATES`] is read via a
+/// single-value lookup during parsing, so one of the two declarations is
+/// silently discarded (which one is an implementation detail of graph
+/// iteration order, not something the shape author chose) with no signal
+/// that anything was dropped.
+fn lint_l0014_conflicting_single_valued_parameter(graph: &Graph, diags: &mut Vec<Diagnostic>) {
+    for (predicate, keyword) in SINGLE_VALUED_PREDICATES {
+        let mut by_subject: HashMap<NamedOrBlankNodeRef, Vec<TermRef>> = HashMap::new();
+        for triple in graph.triples_for_predicate(*predicate) {
+            by_subject
+                .entry(triple.subject)
+                .or_default()
+                .push(triple.object);
+        }
+        for (subject, values) in by_subject {
+            let distinct: HashSet<TermRef> = values.iter().copied().collect();
+            if distinct.len() <= 1 {
+                continue;
+            }
+            let mut sorted: Vec<String> = distinct.iter().map(|t| t.to_string()).collect();
+            sorted.sort();
+            push_diag(
+                diags,
+                graph,
+                "L0014",
+                DiagnosticSeverity::Error,
+                subject,
+                Some(keyword),
+                Some(sorted.join(", ")),
+            );
+        }
+    }
+}
+
+/// True for the constraint kinds whose canonical parameters
+/// ([`constraint_parameters`]) depend on recursively-computed, owner-scoped
+/// child shape IDs (see `src/decompose.rs`) - comparing these across
+/// different owning shapes with empty `child_ids` would false-positive
+/// (every `sh:or`, however different its members, would look identical),
+/// so L0015 excludes them rather than risk that.
+fn is_owner_scoped_constraint(constraint: &Constraint<'_>) -> bool {
+    matches!(
+        constraint,
+        Constraint::And(_)
+            | Constraint::Or(_)
+            | Constraint::Xone(_)
+            | Constraint::Not(_)
+            | Constraint::Node(_)
+            | Constraint::QualifiedValueShape(_)
+    )
+}
+
+/// L0015 (Warning): two distinct top-level shapes that share at least one
+/// target and declare a leaf constraint (same path, component, and
+/// canonical parameters) - genuinely validating the same thing twice.
+/// Scoped to leaf constraints only (see [`is_owner_scoped_constraint`]);
+/// `sh:and`/`or`/`xone`/`not`/`node`/`qualifiedValueShape` aren't compared.
+fn lint_l0015_duplicate_constraint_across_shapes<'a>(
+    graph: &'a Graph,
+    shapes: &'a [Shape<'a>],
+    diags: &mut Vec<Diagnostic>,
+) {
+    // (path, component, canonical params) -> every top-level shape that
+    // declares it, alongside that shape's own targets (for the overlap
+    // check) and node (for reporting).
+    let mut by_key: HashMap<(String, &'static str, String), Vec<&'a Shape<'a>>> = HashMap::new();
+
+    let mut index_shape = |owner: &'a Shape<'a>, holder: &'a Shape<'a>, path: &str| {
+        for constraint in &holder.constraints {
+            if is_owner_scoped_constraint(constraint) {
+                continue;
+            }
+            let component = component_iri(constraint);
+            let (_, canonical_params) = constraint_parameters(constraint, &[]);
+            by_key
+                .entry((path.to_string(), component, canonical_params))
+                .or_default()
+                .push(owner);
+        }
+    };
+
+    for shape in shapes {
+        if shape.targets.is_empty() {
+            continue;
+        }
+        index_shape(shape, shape, "");
+        for property_shape in &shape.property_shapes {
+            let path = property_shape
+                .path
+                .as_ref()
+                .map(|p| p.to_string())
+                .unwrap_or_default();
+            index_shape(shape, property_shape, &path);
+        }
+    }
+
+    let mut reported: HashSet<(NamedOrBlankNodeRef<'a>, NamedOrBlankNodeRef<'a>, String)> =
+        HashSet::new();
+    for ((path, component, params), owners) in by_key {
+        for i in 0..owners.len() {
+            for j in (i + 1)..owners.len() {
+                let (a, b) = (owners[i], owners[j]);
+                if a.node == b.node {
+                    continue;
+                }
+                if a.targets.is_disjoint(&b.targets) {
+                    continue;
+                }
+                let key = if a.node.to_string() <= b.node.to_string() {
+                    (
+                        a.node,
+                        b.node,
+                        format!("{path}\u{0}{component}\u{0}{params}"),
+                    )
+                } else {
+                    (
+                        b.node,
+                        a.node,
+                        format!("{path}\u{0}{component}\u{0}{params}"),
+                    )
+                };
+                if !reported.insert(key) {
+                    continue;
+                }
+                let mut diag = base_diagnostic("L0015", DiagnosticSeverity::Warning);
+                diag.source_shape = Some(a.node.to_string());
+                diag.actual = Some(b.node.to_string());
+                diag.path = if path.is_empty() {
+                    None
+                } else {
+                    Some(path.clone())
+                };
+                diag.constraint_component = Some(component.to_string());
+                diag.notes = vec![format!(
+                    "also declared on {} (shares a target with {})",
+                    b.node, a.node
+                )];
+                let (snippet_a, _) = build_shapes_snippet(graph, a.node, None);
+                let (snippet_b, _) = build_shapes_snippet(graph, b.node, None);
+                diag.snippets.extend(snippet_a);
+                diag.snippets.extend(snippet_b);
+                diags.push(diag);
+            }
         }
     }
 }

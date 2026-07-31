@@ -112,8 +112,12 @@ enum Commands {
 
     /// Lint a shapes graph without validating data
     Lint {
-        #[arg(value_name = "SHAPES_FILE")]
-        shapes_file: PathBuf,
+        /// One or more shapes files, merged for linting. Each file's path is
+        /// used as its source name for D0001/D0002 collision diagnostics
+        /// when more than one is given (e.g. a base vocabulary plus
+        /// project-specific extensions).
+        #[arg(value_name = "SHAPES_FILE", required = true)]
+        shapes_files: Vec<PathBuf>,
         #[arg(short, long)]
         format: Option<String>,
         #[arg(long, default_value = "text")]
@@ -131,8 +135,13 @@ enum Commands {
     /// independent of blank-node labels, prefixes, or unrelated edits
     /// elsewhere in the graph.
     Decompose {
-        #[arg(value_name = "SHAPES_FILE")]
-        shapes_file: PathBuf,
+        /// One or more shapes files, decomposed and merged together. Each
+        /// file's path is used as its source name for `source`/`sources`
+        /// attribution and D0001/D0002 collision diagnostics when more than
+        /// one is given (e.g. a base vocabulary plus project-specific
+        /// extensions).
+        #[arg(value_name = "SHAPES_FILE", required = true)]
+        shapes_files: Vec<PathBuf>,
         #[arg(short, long)]
         format: Option<String>,
         /// Pretty-print the JSON output (default: compact, one line)
@@ -222,19 +231,19 @@ fn main() -> Result<(), ShaclError> {
             info_command(shapes_file, format, detailed)
         }
         Commands::Lint {
-            shapes_file,
+            shapes_files,
             format,
             diagnostics,
         } => {
-            info!("Linting shapes: {}", shapes_file.display());
-            lint_command(shapes_file, format, &diagnostics)
+            info!("Linting {} shapes file(s)", shapes_files.len());
+            lint_command(shapes_files, format, &diagnostics)
         }
         Commands::Explain { code } => explain_command(&code),
         Commands::Decompose {
-            shapes_file,
+            shapes_files,
             format,
             pretty,
-        } => decompose_command(shapes_file, format, pretty),
+        } => decompose_command(shapes_files, format, pretty),
         Commands::Why {
             shapes_file,
             data_file,
@@ -659,18 +668,43 @@ fn validate_command_indexed(
     emit_report(&report, output, output_format)
 }
 
+/// Loads each of `shapes_files` into its own [`shacl_rust::sources::NamedSource`],
+/// named by its path - shared by `lint`/`decompose` so both commands merge
+/// and attribute multiple shapes files identically.
+fn load_named_shapes_sources(
+    shapes_files: &[PathBuf],
+    format: Option<&str>,
+) -> Result<Vec<shacl_rust::sources::NamedSource>, ShaclError> {
+    shapes_files
+        .iter()
+        .map(|path| {
+            let graph = read_graph_from_file(path, format)?;
+            info!(
+                "Shapes graph loaded from {} with {} triples",
+                path.display(),
+                graph.len()
+            );
+            Ok(shacl_rust::sources::NamedSource {
+                name: path.display().to_string(),
+                graph,
+            })
+        })
+        .collect()
+}
+
 fn lint_command(
-    shapes_file: PathBuf,
+    shapes_files: Vec<PathBuf>,
     format: Option<String>,
     diagnostics_mode: &str,
 ) -> Result<(), ShaclError> {
-    let graph = read_graph_from_file(&shapes_file, format.as_deref())?;
-    info!("Shapes graph loaded with {} triples", graph.len());
+    let sources = load_named_shapes_sources(&shapes_files, format.as_deref())?;
+    let mut diags = shacl_rust::sources::detect_collisions(&sources);
+    let graph = shacl_rust::sources::merge_sources(&sources);
 
     let shapes = parser::parse_shapes(&graph)?;
     info!("Parsed {} shapes", shapes.len());
 
-    let mut diags = shacl_rust::diagnostics::lint_shapes(&graph, &shapes);
+    diags.extend(shacl_rust::diagnostics::lint_shapes(&graph, &shapes));
     shacl_rust::diagnostics::sort_diagnostics(&mut diags);
 
     emit_diagnostics(&diags, diagnostics_mode);
@@ -686,17 +720,12 @@ fn lint_command(
 }
 
 fn decompose_command(
-    shapes_file: PathBuf,
+    shapes_files: Vec<PathBuf>,
     format: Option<String>,
     pretty: bool,
 ) -> Result<(), ShaclError> {
-    let graph = read_graph_from_file(&shapes_file, format.as_deref())?;
-    info!("Shapes graph loaded with {} triples", graph.len());
-
-    let shapes = parser::parse_shapes(&graph)?;
-    info!("Parsed {} shapes", shapes.len());
-
-    let decomposed = shacl_rust::decompose_shapes(&shapes, None, graph.len());
+    let sources = load_named_shapes_sources(&shapes_files, format.as_deref())?;
+    let decomposed = shacl_rust::sources::decompose_with_collisions(&sources)?;
     let rendered = if pretty {
         serde_json::to_string_pretty(&decomposed)
     } else {

@@ -68,10 +68,34 @@ struct ShapesGraphInput {
     #[serde(default)]
     shapes_paths: Option<Vec<String>>,
     #[schemars(
+        description = "Named shapes sources (e.g. a base vocabulary plus project-specific extensions), each inline or by path. Naming sources explicitly enables collision detection: if the same shape IRI receives conflicting triples from two sources, a D0001 error names both; if it's triple-for-triple identical in both, a D0002 info does. Combine freely with the other `shapes_*` fields above - every source (named or not) is merged and checked for collisions against every other."
+    )]
+    #[serde(default)]
+    shapes_sources: Option<Vec<NamedShapesSourceInput>>,
+    #[schemars(
         description = "Format shared by all inline/path shapes sources above (e.g., 'ttl', 'nt', 'jsonld'). Required for inline sources; inferred per-file from extension for path sources if omitted."
     )]
     #[serde(default)]
     shapes_format: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(description = "One named shapes source, inline or by path")]
+struct NamedShapesSourceInput {
+    #[schemars(
+        description = "Name for this source (e.g. 'core', 'extensions'), used to attribute any D0001/D0002 collision diagnostics and decompose_shapes' `source`/`sources` fields."
+    )]
+    name: String,
+    #[schemars(
+        description = "This source's shapes graph as an inline string. Mutually exclusive with `path`."
+    )]
+    #[serde(default)]
+    content: Option<String>,
+    #[schemars(
+        description = "Path to this source's shapes file on disk, as an alternative to inline `content`."
+    )]
+    #[serde(default)]
+    path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -138,7 +162,7 @@ struct ValidateDiagnosticsArgs {
     #[serde(flatten)]
     shapes: ShapesGraphInput,
     #[schemars(
-        description = "Skip the 13 semantic shape-lint rules and only return validation diagnostics (default: false)"
+        description = "Skip the 15 semantic shape-lint rules and only return validation diagnostics (default: false)"
     )]
     #[serde(default)]
     skip_lint: bool,
@@ -223,37 +247,72 @@ fn resolve_data_graph(input: DataGraphInput) -> Result<oxigraph::model::Graph, S
     read_graph_from_string(&content, &fmt).map_err(|e| format!("Failed to parse data graph: {e}"))
 }
 
-/// Resolves a [`ShapesGraphInput`], parsing every inline/path source given
-/// (singular and/or plural fields) and merging them into one shapes graph.
-fn resolve_shapes_graph(input: ShapesGraphInput) -> Result<oxigraph::model::Graph, String> {
-    let mut sources: Vec<(Option<String>, Option<String>)> = Vec::new();
+/// Resolves a [`ShapesGraphInput`] into its individual named sources,
+/// without merging them: every source is parsed into its own [`shacl_rust::sources::NamedSource`],
+/// named explicitly (`shapes_sources`) or automatically (its file path for
+/// `shapes_path`/`shapes_paths`; `inline-0`, `inline-1`, ... for
+/// `shapes_graph`/`shapes_graphs`, in declaration order). Callers that only
+/// need one graph should merge via [`shacl_rust::sources::merge_sources`];
+/// callers that want collision diagnostics or per-source attribution
+/// (`decompose_shapes`) use the sources directly.
+fn resolve_shapes_sources(
+    input: ShapesGraphInput,
+) -> Result<Vec<shacl_rust::sources::NamedSource>, String> {
+    let shapes_format = input.shapes_format.clone();
+
+    // (explicit name, inline content, path)
+    let mut raw: Vec<(Option<String>, Option<String>, Option<String>)> = Vec::new();
     if input.shapes_graph.is_some() || input.shapes_path.is_some() {
-        sources.push((input.shapes_graph, input.shapes_path));
+        raw.push((None, input.shapes_graph, input.shapes_path));
     }
     for g in input.shapes_graphs.into_iter().flatten() {
-        sources.push((Some(g), None));
+        raw.push((None, Some(g), None));
     }
     for p in input.shapes_paths.into_iter().flatten() {
-        sources.push((None, Some(p)));
+        raw.push((None, None, Some(p)));
     }
-    if sources.is_empty() {
+    for named in input.shapes_sources.into_iter().flatten() {
+        if named.content.is_none() && named.path.is_none() {
+            return Err(format!(
+                "shapes_sources entry '{}' must provide `content` or `path`",
+                named.name
+            ));
+        }
+        raw.push((Some(named.name), named.content, named.path));
+    }
+    if raw.is_empty() {
         return Err(
-            "Provide one of `shapes_graph`, `shapes_path`, `shapes_graphs`, `shapes_paths`"
+            "Provide one of `shapes_graph`, `shapes_path`, `shapes_graphs`, `shapes_paths`, `shapes_sources`"
                 .to_string(),
         );
     }
 
-    let mut merged = oxigraph::model::Graph::new();
-    for (inline, path) in sources {
+    let mut sources = Vec::new();
+    let mut inline_index = 0usize;
+    for (explicit_name, inline, path) in raw {
+        let name = explicit_name.unwrap_or_else(|| match &path {
+            Some(p) => p.clone(),
+            None => {
+                let n = format!("inline-{inline_index}");
+                inline_index += 1;
+                n
+            }
+        });
         let (content, fmt) =
-            resolve_graph_source("shapes_graph", inline, path, input.shapes_format.clone())?;
-        let parsed = read_graph_from_string(&content, &fmt)
-            .map_err(|e| format!("Failed to parse shapes graph: {e}"))?;
-        for triple in parsed.iter() {
-            merged.insert(triple);
-        }
+            resolve_graph_source("shapes_graph", inline, path, shapes_format.clone())?;
+        let graph = read_graph_from_string(&content, &fmt)
+            .map_err(|e| format!("Failed to parse shapes graph ('{name}'): {e}"))?;
+        sources.push(shacl_rust::sources::NamedSource { name, graph });
     }
-    Ok(merged)
+    Ok(sources)
+}
+
+/// Resolves a [`ShapesGraphInput`], parsing every inline/path/named source
+/// given and merging them into one shapes graph. Ignores collisions (use
+/// [`resolve_shapes_sources`] directly when those diagnostics matter).
+fn resolve_shapes_graph(input: ShapesGraphInput) -> Result<oxigraph::model::Graph, String> {
+    let sources = resolve_shapes_sources(input)?;
+    Ok(shacl_rust::sources::merge_sources(&sources))
 }
 
 /// Enriches the JSON rendering of the first [`shacl_rust::diagnostics::Diagnostic`]
@@ -430,12 +489,9 @@ impl ShaclServer {
         &self,
         Parameters(DecomposeShapesArgs { shapes }): Parameters<DecomposeShapesArgs>,
     ) -> Result<String, String> {
-        let shapes_graph = resolve_shapes_graph(shapes)?;
-
-        let parsed_shapes =
-            parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
-
-        let decomposed = shacl_rust::decompose_shapes(&parsed_shapes, None, shapes_graph.len());
+        let sources = resolve_shapes_sources(shapes)?;
+        let decomposed =
+            shacl_rust::sources::decompose_with_collisions(&sources).map_err(|e| e.to_string())?;
         Ok(decomposed.to_string())
     }
 
@@ -451,7 +507,9 @@ impl ShaclServer {
         }): Parameters<ValidateDiagnosticsArgs>,
     ) -> Result<String, String> {
         let data_graph = resolve_data_graph(data)?;
-        let shapes_graph = resolve_shapes_graph(shapes)?;
+        let sources = resolve_shapes_sources(shapes)?;
+        let mut diagnostics = shacl_rust::sources::detect_collisions(&sources);
+        let shapes_graph = shacl_rust::sources::merge_sources(&sources);
 
         let validation_dataset = ValidationDataset::from_graphs(data_graph, shapes_graph)
             .map_err(|e| format!("Failed to create validation dataset: {}", e))?;
@@ -459,11 +517,12 @@ impl ShaclServer {
         let shapes = parse_shapes(validation_dataset.shapes_graph())
             .map_err(|e| format!("Failed to parse shapes: {}", e))?;
 
-        let mut diagnostics = if skip_lint {
-            Vec::new()
-        } else {
-            shacl_rust::diagnostics::lint_shapes(validation_dataset.shapes_graph(), &shapes)
-        };
+        if !skip_lint {
+            diagnostics.extend(shacl_rust::diagnostics::lint_shapes(
+                validation_dataset.shapes_graph(),
+                &shapes,
+            ));
+        }
 
         let report = validate(&validation_dataset, &shapes);
         diagnostics.extend(shacl_rust::diagnostics::from_report(
@@ -491,18 +550,20 @@ impl ShaclServer {
     }
 
     #[tool(
-        description = "Run the 13 semantic shape-lint rules against a SHACL shapes graph and return lint diagnostics"
+        description = "Run the 15 semantic shape-lint rules against a SHACL shapes graph and return lint diagnostics"
     )]
     async fn lint_shacl_shapes(
         &self,
         Parameters(LintShaclShapesArgs { shapes }): Parameters<LintShaclShapesArgs>,
     ) -> Result<String, String> {
-        let shapes_graph = resolve_shapes_graph(shapes)?;
+        let sources = resolve_shapes_sources(shapes)?;
+        let mut diagnostics = shacl_rust::sources::detect_collisions(&sources);
+        let shapes_graph = shacl_rust::sources::merge_sources(&sources);
 
         let shapes =
             parse_shapes(&shapes_graph).map_err(|e| format!("SHACL shapes error: {}", e))?;
 
-        let mut diagnostics = shacl_rust::diagnostics::lint_shapes(&shapes_graph, &shapes);
+        diagnostics.extend(shacl_rust::diagnostics::lint_shapes(&shapes_graph, &shapes));
         shacl_rust::diagnostics::sort_diagnostics(&mut diagnostics);
 
         let mut json_array: Vec<serde_json::Value> = diagnostics
@@ -753,6 +814,7 @@ mod tests {
                 "@prefix ex: <http://example.org/> . ex:S2 a ex:Shape .".to_string(),
             ]),
             shapes_paths: None,
+            shapes_sources: None,
             shapes_format: Some("ttl".to_string()),
         };
         let graph = resolve_shapes_graph(input).unwrap();
@@ -766,6 +828,7 @@ mod tests {
             shapes_path: None,
             shapes_graphs: None,
             shapes_paths: None,
+            shapes_sources: None,
             shapes_format: None,
         };
         let err = resolve_shapes_graph(input).unwrap_err();

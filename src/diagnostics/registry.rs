@@ -583,6 +583,74 @@ rdf:type or other properties that were clearly meant to be ignored.",
         failing_example: "ex:PersonShape sh:closed true ; sh:ignoredProperties rdf:type ; sh:property [ sh:path ex:name ] .",
         fixed_example: "ex:PersonShape sh:closed true ; sh:ignoredProperties ( rdf:type ) ; sh:property [ sh:path ex:name ] .",
     },
+    RegistryEntry {
+        code: "L0014",
+        title: "conflicting values for a single-valued sh: parameter",
+        component: None,
+        spec_ref: "https://www.w3.org/TR/shacl/#constraints-section",
+        explanation: "Several sh: predicates (sh:datatype, sh:nodeKind, sh:minCount, \
+sh:maxCount, sh:minLength, sh:maxLength, sh:minInclusive, sh:minExclusive, \
+sh:maxInclusive, sh:maxExclusive, sh:uniqueLang, sh:closed, sh:pattern, sh:flags, \
+sh:path, sh:severity, sh:deactivated) are semantically single-valued: a shape declares \
+at most one value for each. The parser reads exactly one value for each of these per \
+subject, so declaring two different values for the same predicate on the same subject \
+means one is silently discarded - which one depends on graph iteration order, not on \
+anything the shape author controls. This is almost always a copy-paste or merge \
+mistake, not an intentional declaration (SHACL has no defined meaning for \"two \
+different sh:datatype values on one shape\" the way it does for sh:class or \
+sh:hasValue, which may legitimately repeat).",
+        failing_example: "ex:PersonShape sh:property [ sh:path ex:age ; sh:datatype xsd:integer ; sh:datatype xsd:string ] .",
+        fixed_example: "ex:PersonShape sh:property [ sh:path ex:age ; sh:datatype xsd:integer ] .",
+    },
+    RegistryEntry {
+        code: "L0015",
+        title: "duplicate constraint declared on two shapes sharing a target",
+        component: None,
+        spec_ref: "https://www.w3.org/TR/shacl/#constraints-section",
+        explanation: "Two distinct shapes share at least one target and each declare a \
+constraint with the same path, component, and parameters - so the same value on the \
+same focus node gets validated twice, independently, by two unrelated-looking shape \
+declarations. This is usually the result of copy-pasting a property constraint into a \
+second shape instead of factoring it into one shared shape (referenced via sh:node, or \
+by giving both shapes the same sh:property blank node). It doesn't produce wrong \
+validation results - both checks agree - but it means a future edit to the rule has to \
+be made twice, and the two copies can silently drift apart. Scoped to leaf constraints \
+only; sh:and/or/xone/not/node/qualifiedValueShape aren't compared across shapes by this \
+rule.",
+        failing_example: "ex:PersonShapeA sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .\nex:PersonShapeB sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
+        fixed_example: "ex:PersonShapeA sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
+    },
+    RegistryEntry {
+        code: "D0001",
+        title: "shape IRI collision: conflicting definitions across sources",
+        component: None,
+        spec_ref: "https://www.w3.org/TR/shacl/#syntax-triples",
+        explanation: "The same shape IRI received different triples from two or more named \
+input sources (e.g. a base vocabulary file and a project-specific extensions file merged \
+for validation). Since SHACL shapes graphs are merged as a plain RDF union, both sources' \
+triples end up on the one shape - if they declare different targets, constraints, or \
+severities, the merged shape silently becomes the union of both, which is rarely what \
+either source's author intended and can be much stricter (or laxer) than either source \
+alone. This diagnostic surfaces the collision explicitly, naming every contributing \
+source, instead of leaving it to be discovered later as unexplained validation results.",
+        failing_example: "# source \"core\": ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .\n# source \"extra\": ex:PersonShape sh:targetClass ex:Employee ; sh:property [ sh:path ex:badge ; sh:minCount 1 ] .",
+        fixed_example: "# give the two shapes distinct IRIs, or reconcile them into one intentional definition in a single source\n# source \"core\": ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .\n# source \"extra\": ex:EmployeeShape sh:targetClass ex:Employee ; sh:property [ sh:path ex:badge ; sh:minCount 1 ] .",
+    },
+    RegistryEntry {
+        code: "D0002",
+        title: "identical shape redefinition across sources",
+        component: None,
+        spec_ref: "https://www.w3.org/TR/shacl/#syntax-triples",
+        explanation: "The same shape IRI, with triple-for-triple identical triples, is \
+declared in two or more named input sources. This is harmless for validation (an RDF \
+union of identical triples is just those triples once), but is usually a sign that one \
+source is a stale or duplicated copy of the other - e.g. a shared vocabulary file \
+accidentally vendored into two projects being merged for a single validation run. \
+Reported as Info, not Warning or Error, since it changes nothing about how validation \
+behaves.",
+        failing_example: "# source \"core\": ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .\n# source \"vendored-copy\": ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
+        fixed_example: "# declare it in exactly one source and have the other depend on / import that source instead of duplicating it\n# source \"core\": ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
+    },
 ];
 
 pub fn all_entries() -> &'static [RegistryEntry] {

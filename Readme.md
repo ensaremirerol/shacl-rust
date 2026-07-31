@@ -63,10 +63,10 @@ error: 1 error, 0 warnings
 
 ### Other diagnostics subcommands
 
-- `shacl-validator lint <shapes.ttl>` — lint a shapes graph for common mistakes (13 rules) without validating any data.
-- `shacl-validator explain V0007` — print a longer explanation of a diagnostic code (validator codes `V0001`-`V00xx`, lint codes `L0001`-`L00xx`).
+- `shacl-validator lint <shapes.ttl>...` — lint one or more shapes graphs for common mistakes (15 rules) without validating any data. Multiple files are merged and checked for shape-IRI collisions across them (D0001/D0002), each named by its path.
+- `shacl-validator explain V0007` — print a longer explanation of a diagnostic code (validator codes `V0001`-`V00xx`, lint codes `L0001`-`L00xx`, cross-source codes `D0001`-`D0002`).
 - `shacl-validator why <shapes.ttl> <data.ttl> --focus <iri> [--shape <iri>]` — explain why a specific focus node does or does not conform, optionally restricted to one shape.
-- `shacl-validator decompose <shapes.ttl> [--pretty]` — decompose a shapes graph into structured JSON: one entry per individual constraint parameter binding, with content-stable IDs that stay the same across runs, prefix renames, and unrelated edits elsewhere in the graph (unlike `parse`'s blank-node labels, which change every run).
+- `shacl-validator decompose <shapes.ttl>... [--pretty]` — decompose one or more shapes graphs into structured JSON: one entry per individual constraint parameter binding, with content-stable IDs that stay the same across runs, prefix renames, and unrelated edits elsewhere in the graph (unlike `parse`'s blank-node labels, which change every run). Multiple files are decomposed independently and concatenated, each attributed to its own path as its `source`, with any cross-file shape-IRI collisions reported in the output's `collisions` array.
 
 ## License
 
