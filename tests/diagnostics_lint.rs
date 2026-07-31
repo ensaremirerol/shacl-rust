@@ -35,6 +35,8 @@ fn lint_rules_fire() {
           ex:S a sh:NodeShape ; sh:property [ sh:path ex:p ; sh:minCount 1 ] ."),
         ("L0012", "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> .
           ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:deactivated true ."),
+        ("L0013", "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> . @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+          ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:closed true ; sh:ignoredProperties rdf:type ; sh:property [ sh:path ex:p ] ."),
     ];
     for (code, ttl) in cases {
         let codes = lint_codes(ttl);
@@ -70,4 +72,18 @@ fn node_shape_pair_constraints_are_not_l0005() {
     let ttl = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> .
         ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:equals ex:other .";
     assert!(!lint_codes(ttl).contains(&"L0005"), "{:?}", lint_codes(ttl));
+}
+
+#[test]
+fn well_formed_ignored_properties_list_is_not_l0013() {
+    let ttl = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> . @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+        ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:closed true ; sh:ignoredProperties ( rdf:type ) ; sh:property [ sh:path ex:p ] .";
+    assert!(!lint_codes(ttl).contains(&"L0013"), "{:?}", lint_codes(ttl));
+}
+
+#[test]
+fn literal_ignored_properties_is_l0013() {
+    let ttl = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> .
+        ex:S a sh:NodeShape ; sh:targetClass ex:P ; sh:closed true ; sh:ignoredProperties \"oops\" ; sh:property [ sh:path ex:p ] .";
+    assert!(lint_codes(ttl).contains(&"L0013"), "{:?}", lint_codes(ttl));
 }

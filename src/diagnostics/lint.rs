@@ -3,7 +3,7 @@
 //! typos in the `sh:` namespace, contradictory or dead constraints, and
 //! shapes that can never be evaluated. See "Lint rules v1" in
 //! docs/superpowers/specs/2026-07-23-diagnostics-design.md for the spec
-//! table this module implements (L0001-L0012).
+//! table this module implements (L0001-L0012; L0013 added later).
 
 use std::collections::HashSet;
 
@@ -24,7 +24,7 @@ use super::{sort_diagnostics, Diagnostic, DiagnosticSeverity};
 
 const SH_NS: &str = "http://www.w3.org/ns/shacl#";
 
-/// Lints `shapes_graph`/`shapes` against the 12 rules in the spec table,
+/// Lints `shapes_graph`/`shapes` against the 13 rules in the spec table,
 /// returning deterministically sorted diagnostics (empty when clean).
 pub fn lint_shapes<'a>(shapes_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -40,6 +40,7 @@ pub fn lint_shapes<'a>(shapes_graph: &'a Graph, shapes: &'a [Shape<'a>]) -> Vec<
     lint_l0010_ignored_without_closed(shapes_graph, &mut diags);
     lint_l0011_dead_shape(shapes_graph, shapes, &mut diags);
     lint_l0012_deactivated(shapes_graph, shapes, &mut diags);
+    lint_l0013_malformed_ignored_properties(shapes_graph, &mut diags);
     sort_diagnostics(&mut diags);
     diags
 }
@@ -615,6 +616,34 @@ fn lint_l0012_deactivated<'a>(
                 shape.node,
                 Some("deactivated"),
                 None,
+            );
+        }
+    }
+}
+
+/// L0013 (Warning): `sh:ignoredProperties` whose object is not a well-formed
+/// `rdf:List` - a literal, or a node with no `rdf:first`/`rdf:rest` triples
+/// (most often the property IRI written directly instead of wrapped in
+/// `( ... )`, e.g. `sh:ignoredProperties rdf:type` instead of
+/// `sh:ignoredProperties ( rdf:type )`). `parse_closed_constraint` silently
+/// treats either case as an empty list - the shape still parses, so
+/// `sh:closed` then rejects every property the author meant to exempt with
+/// no signal that `sh:ignoredProperties` did nothing.
+fn lint_l0013_malformed_ignored_properties(graph: &Graph, diags: &mut Vec<Diagnostic>) {
+    for triple in graph.triples_for_predicate(sh::IGNORED_PROPERTIES) {
+        let malformed = match term_to_named_or_blank(triple.object) {
+            Some(list_node) => parse_rdf_list(graph, list_node).is_empty(),
+            None => true, // a literal is never a list node
+        };
+        if malformed {
+            push_diag(
+                diags,
+                graph,
+                "L0013",
+                DiagnosticSeverity::Warning,
+                triple.subject,
+                Some("ignoredProperties"),
+                Some(triple.object.to_string()),
             );
         }
     }

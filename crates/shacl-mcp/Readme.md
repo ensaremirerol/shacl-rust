@@ -67,13 +67,13 @@ Validate RDF data against SHACL shapes and return rich rustc-style diagnostics: 
 **Parameters:**
 - `data_graph` / `data_path`, `data_format`
 - `shapes_graph` / `shapes_path` / `shapes_graphs` / `shapes_paths`, `shapes_format`
-- `skip_lint` (default `false`): skip the 12 semantic shape-lint rules and only return validation diagnostics
+- `skip_lint` (default `false`): skip the 13 semantic shape-lint rules and only return validation diagnostics
 
 **Returns:** `{ "summary": { "conforms", "violation_count", "errors", "warnings", "info", "diagnostic_count" }, "diagnostics": [...] }` — check `summary` first to short-circuit when nothing fired.
 
 ### lint_shacl_shapes
 
-Run the 12 semantic shape-lint rules against a SHACL shapes graph, independent of any data graph — catches structural problems (e.g. a malformed shape) before spending a `validate_diagnostics` call on it.
+Run the 13 semantic shape-lint rules against a SHACL shapes graph, independent of any data graph — catches structural problems (e.g. a malformed shape) before spending a `validate_diagnostics` call on it.
 
 **Parameters:**
 - `shapes_graph` / `shapes_path` / `shapes_graphs` / `shapes_paths`, `shapes_format`

@@ -131,7 +131,7 @@ struct ValidateDiagnosticsArgs {
     #[serde(flatten)]
     shapes: ShapesGraphInput,
     #[schemars(
-        description = "Skip the 12 semantic shape-lint rules and only return validation diagnostics (default: false)"
+        description = "Skip the 13 semantic shape-lint rules and only return validation diagnostics (default: false)"
     )]
     #[serde(default)]
     skip_lint: bool,
@@ -466,7 +466,7 @@ impl ShaclServer {
     }
 
     #[tool(
-        description = "Run the 12 semantic shape-lint rules against a SHACL shapes graph and return lint diagnostics"
+        description = "Run the 13 semantic shape-lint rules against a SHACL shapes graph and return lint diagnostics"
     )]
     async fn lint_shacl_shapes(
         &self,

@@ -565,6 +565,24 @@ here is intentionally turned off, not a defect.",
         failing_example: "ex:PersonShape sh:deactivated true ; sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
         fixed_example: "ex:PersonShape sh:targetClass ex:Person ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .",
     },
+    RegistryEntry {
+        code: "L0013",
+        title: "sh:ignoredProperties is not a well-formed rdf:List",
+        component: None,
+        spec_ref: "https://www.w3.org/TR/shacl/#ClosedConstraintComponent",
+        explanation: "sh:ignoredProperties must be an rdf:List (Turtle's ( ... ) collection \
+syntax): a chain of blank nodes linked by rdf:first/rdf:rest ending in rdf:nil. A \
+common mistake is writing the property IRI directly as the object, e.g. \
+`sh:ignoredProperties rdf:type` instead of `sh:ignoredProperties ( rdf:type )` - \
+that IRI is not itself a list node, so it has no rdf:first to read and the parser \
+silently treats the whole declaration as an empty list. The shape still parses and \
+still looks correct at a glance, but sh:closed now rejects every one of the \
+properties the author meant to exempt, exactly as if sh:ignoredProperties were \
+absent - typically surfacing later as ClosedConstraintComponent violations on \
+rdf:type or other properties that were clearly meant to be ignored.",
+        failing_example: "ex:PersonShape sh:closed true ; sh:ignoredProperties rdf:type ; sh:property [ sh:path ex:name ] .",
+        fixed_example: "ex:PersonShape sh:closed true ; sh:ignoredProperties ( rdf:type ) ; sh:property [ sh:path ex:name ] .",
+    },
 ];
 
 pub fn all_entries() -> &'static [RegistryEntry] {
