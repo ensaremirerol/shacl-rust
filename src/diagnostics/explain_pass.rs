@@ -8,13 +8,16 @@
 //! single-focus-node validation per traced shape via
 //! `Shape::validate_focus_node`.
 
+use std::collections::HashMap;
+
 use oxigraph::model::{NamedOrBlankNodeRef, TermRef};
 
+use crate::decompose::shape_id_index;
 use crate::validation::dataset::ValidationDataset;
 use crate::validation::report::ValidationReport;
 use crate::{Constraint, Shape, ValidationResult};
 
-use super::derive::build_shapes_snippet;
+use super::derive::{build_shapes_snippet, stable_shape_display};
 use super::registry;
 use super::{sort_diagnostics, Diagnostic, DiagnosticSeverity, Verdict};
 
@@ -31,6 +34,7 @@ pub fn explain_conformance<'a>(
     shape_filter: Option<NamedOrBlankNodeRef<'a>>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let shape_ids = shape_id_index(shapes);
 
     for shape in shapes {
         if let Some(filter) = shape_filter {
@@ -50,6 +54,7 @@ pub fn explain_conformance<'a>(
                 shape,
                 focus,
                 vec!["shape has no targets; evaluated directly".to_string()],
+                &shape_ids,
                 &mut diagnostics,
             );
             continue;
@@ -83,14 +88,21 @@ pub fn explain_conformance<'a>(
                         .to_string(),
                 ),
                 focus_node: Some(focus.to_string()),
-                source_shape: Some(shape.node.to_string()),
+                source_shape: Some(stable_shape_display(shape.node, &shape_ids)),
                 path: None,
                 verdict: Some(Verdict::NotTargeted),
             });
             continue;
         }
 
-        trace_shape(dataset, shape, focus, selected_by, &mut diagnostics);
+        trace_shape(
+            dataset,
+            shape,
+            focus,
+            selected_by,
+            &shape_ids,
+            &mut diagnostics,
+        );
     }
 
     sort_diagnostics(&mut diagnostics);
@@ -101,14 +113,21 @@ pub fn explain_conformance<'a>(
 /// property shapes too, via `validate_focus_node`'s own recursion), then
 /// emits one constraint trace per constraint on `shape` and per constraint
 /// on each of its property shapes.
+#[allow(clippy::too_many_arguments)]
 fn trace_shape<'a>(
     dataset: &'a ValidationDataset,
     shape: &'a Shape<'a>,
     focus: TermRef<'a>,
     targeting_notes: Vec<String>,
+    shape_ids: &HashMap<NamedOrBlankNodeRef<'a>, String>,
     out: &mut Vec<Diagnostic>,
 ) {
-    out.push(shape_header_diagnostic(shape, focus, &targeting_notes));
+    out.push(shape_header_diagnostic(
+        shape,
+        focus,
+        &targeting_notes,
+        shape_ids,
+    ));
 
     let mut report = ValidationReport::new();
     shape.validate_focus_node(dataset, focus, &mut report);
@@ -123,6 +142,7 @@ fn trace_shape<'a>(
             focus,
             &report,
             &targeting_notes,
+            shape_ids,
         ));
     }
 
@@ -137,6 +157,7 @@ fn trace_shape<'a>(
                 focus,
                 &report,
                 &targeting_notes,
+                shape_ids,
             ));
         }
     }
@@ -153,6 +174,7 @@ fn shape_header_diagnostic<'a>(
     shape: &'a Shape<'a>,
     focus: TermRef<'a>,
     targeting_notes: &[String],
+    shape_ids: &HashMap<NamedOrBlankNodeRef<'a>, String>,
 ) -> Diagnostic {
     let kind = if shape.is_property_shape() {
         "PropertyShape"
@@ -174,7 +196,7 @@ fn shape_header_diagnostic<'a>(
         notes: targeting_notes.to_vec(),
         help: None,
         focus_node: Some(focus.to_string()),
-        source_shape: Some(shape.node.to_string()),
+        source_shape: Some(stable_shape_display(shape.node, shape_ids)),
         path: None,
         verdict: None,
     }
@@ -185,6 +207,7 @@ fn shape_header_diagnostic<'a>(
 /// vacuous when `value_nodes` is empty (and the constraint isn't
 /// `sh:minCount`, which is defined precisely for that case), violates when
 /// the focus-node report carries a matching result, conforms otherwise.
+#[allow(clippy::too_many_arguments)]
 fn constraint_diagnostic<'a>(
     dataset: &'a ValidationDataset,
     constraint_owner: &'a Shape<'a>,
@@ -193,6 +216,7 @@ fn constraint_diagnostic<'a>(
     focus: TermRef<'a>,
     report: &ValidationReport<'a>,
     targeting_notes: &[String],
+    shape_ids: &HashMap<NamedOrBlankNodeRef<'a>, String>,
 ) -> Diagnostic {
     let component_iri = constraint_component_iri(constraint);
     let code = registry::code_for_component(component_iri);
@@ -248,7 +272,7 @@ fn constraint_diagnostic<'a>(
         notes,
         help,
         focus_node: Some(focus.to_string()),
-        source_shape: Some(constraint_owner.node.to_string()),
+        source_shape: Some(stable_shape_display(constraint_owner.node, shape_ids)),
         path: constraint_owner.path.as_ref().map(|p| p.to_string()),
         verdict: Some(verdict),
     }

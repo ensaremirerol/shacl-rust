@@ -4,9 +4,12 @@
 //! `sh:sourceConstraintComponent` onto a stable registry code, and fills in
 //! an expected/actual/help summary from a small per-component table.
 
+use std::collections::HashMap;
+
 use oxigraph::model::{Graph, NamedOrBlankNodeRef, TermRef};
 
 use crate::core::path::PathElement;
+use crate::decompose::shape_id_index;
 use crate::validation::dataset::ValidationDataset;
 use crate::{Path, Shape, ValidationReport, ValidationResult};
 
@@ -20,10 +23,19 @@ pub fn from_report<'a>(
     dataset: &'a ValidationDataset,
     shapes: &'a [Shape<'a>],
 ) -> Vec<Diagnostic> {
+    // R-2 join: a property/anonymous shape's `source_shape` would otherwise
+    // render as `result.source_shape().to_string()`'s raw blank-node label
+    // (e.g. `_:ec119a...`) - stable only within this one parse, useless for
+    // joining against `decompose_shapes` output computed by a *different*
+    // parse (a separate process, or even just a later call in this one).
+    // `shape_id_index` maps every shape to the same content-derived id
+    // `decompose_shapes` itself uses, so this Diagnostic's `source_shape`
+    // and a `decompose_shapes` call over the same shapes graph agree.
+    let shape_ids = shape_id_index(shapes);
     let mut diags: Vec<Diagnostic> = report
         .get_results()
         .iter()
-        .map(|result| derive_one(result, dataset, shapes))
+        .map(|result| derive_one(result, dataset, shapes, &shape_ids))
         .collect();
     annotate_datatype_cross_references(&mut diags);
     super::sort_diagnostics(&mut diags);
@@ -34,6 +46,7 @@ fn derive_one<'a>(
     result: &ValidationResult<'a>,
     dataset: &'a ValidationDataset,
     shapes: &'a [Shape<'a>],
+    shape_ids: &HashMap<NamedOrBlankNodeRef<'a>, String>,
 ) -> Diagnostic {
     // Rule 1: code from the constraint component, V0000 fallback either way.
     let component_iri = result
@@ -115,9 +128,28 @@ fn derive_one<'a>(
         notes,
         help: table.help,
         focus_node: Some(result.focus_node().to_string()),
-        source_shape: Some(result.source_shape().to_string()),
+        source_shape: Some(stable_shape_display(result.source_shape(), shape_ids)),
         path: path_display,
         verdict: None,
+    }
+}
+
+/// A shape reference for `Diagnostic.source_shape`: the shape's own IRI
+/// when it's a named shape (already stable across runs, and more readable
+/// than an opaque id - matches `decompose_shapes`' `iri` field for that
+/// shape), or its `shape_id_index` entry when it's a blank node (matches
+/// `decompose_shapes`' `id` field) - never the raw blank-node label, which
+/// is only stable for the lifetime of one parse.
+pub(crate) fn stable_shape_display<'a>(
+    node: NamedOrBlankNodeRef<'a>,
+    shape_ids: &HashMap<NamedOrBlankNodeRef<'a>, String>,
+) -> String {
+    match node {
+        NamedOrBlankNodeRef::NamedNode(_) => node.to_string(),
+        NamedOrBlankNodeRef::BlankNode(_) => shape_ids
+            .get(&node)
+            .cloned()
+            .unwrap_or_else(|| node.to_string()),
     }
 }
 

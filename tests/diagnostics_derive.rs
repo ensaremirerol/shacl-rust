@@ -115,6 +115,56 @@ fn datatype_and_range_violations_cross_reference_at_the_same_location() {
     }
 }
 
+/// R-2 "Join" fixture: `source_shape` for a violation on an anonymous
+/// (blank-node) property shape must be stable across independent parses of
+/// the same shapes text - not the raw per-run blank-node label, which
+/// differs every time `read_graph_from_string`/`parse_shapes` run, even on
+/// byte-identical input. Regression test for the exact symptom reported:
+/// `source_shape` rendering as `_:ec119a...` instead of a stable id.
+#[test]
+fn source_shape_on_anonymous_property_shape_is_stable_across_independent_parses() {
+    fn diagnose() -> shacl_rust::diagnostics::Diagnostic {
+        let data = read_graph_from_string(DATA, "turtle").unwrap();
+        let shapes_graph = read_graph_from_string(SHAPES, "turtle").unwrap();
+        let shapes = parse_shapes(&shapes_graph).unwrap();
+        let dataset = ValidationDataset::from_graphs(data, shapes_graph.clone()).unwrap();
+        let report = validation::validate(&dataset, &shapes);
+        from_report(&report, &dataset, &shapes)
+            .into_iter()
+            .next()
+            .unwrap()
+    }
+
+    let first = diagnose();
+    let second = diagnose();
+
+    let source_shape = first.source_shape.as_deref().unwrap();
+    assert!(
+        !source_shape.starts_with("_:"),
+        "source_shape must not be a raw blank-node label: {source_shape}"
+    );
+    assert_eq!(
+        first.source_shape, second.source_shape,
+        "source_shape must be identical across independent parses of the same shapes text"
+    );
+
+    // And it must actually match decompose_shapes' own id for that same
+    // property shape - the whole point of the "Join" fixture.
+    let shapes_graph = read_graph_from_string(SHAPES, "turtle").unwrap();
+    let shapes = parse_shapes(&shapes_graph).unwrap();
+    let decomposed = shacl_rust::decompose_shapes(&shapes, None, shapes_graph.len());
+    let known_ids: Vec<&str> = decomposed["shapes"][0]["constraints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["owner_property_shape"].as_str())
+        .collect();
+    assert!(
+        known_ids.contains(&source_shape),
+        "diagnostic source_shape {source_shape:?} not found among decompose_shapes owner_property_shape ids {known_ids:?}"
+    );
+}
+
 #[test]
 fn range_violation_alone_does_not_cross_reference_a_datatype_note() {
     // Regression guard: min_inclusive_violation_derives_v0007 above already

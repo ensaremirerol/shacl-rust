@@ -159,3 +159,44 @@ fn same_shape_has_value_constraints_are_disambiguated_by_value() {
     assert_eq!(red.0, Some(Verdict::Conforms), "{out:?}");
     assert_eq!(blue.0, Some(Verdict::Violates), "{out:?}");
 }
+
+/// R-2 "Join" fixture, `why_conformance` side: `source_shape` on a trace of
+/// an anonymous property shape must be stable across independent parses of
+/// the same shapes text, same as `validate_diagnostics`
+/// (`tests/diagnostics_derive.rs`'s equivalent test) - `explain_pass.rs`
+/// derives its own `Diagnostic`s independently of `derive.rs` and had the
+/// identical raw-blank-node-label bug before both were fixed together.
+#[test]
+fn source_shape_on_anonymous_property_shape_is_stable_across_independent_parses() {
+    fn source_shapes_for(data: &str, focus: &str) -> Vec<Option<String>> {
+        let dg = read_graph_from_string(data, "turtle").unwrap();
+        let sg = read_graph_from_string(SHAPES, "turtle").unwrap();
+        let shapes = parse_shapes(&sg).unwrap();
+        let dataset = ValidationDataset::from_graphs(dg, sg.clone()).unwrap();
+        let focus_nn = NamedNodeRef::new(focus).unwrap();
+        let focus_term = dataset
+            .data()
+            .canonical_term(focus_nn.into())
+            .expect("focus in data");
+        explain_conformance(&dataset, &shapes, focus_term, None)
+            .into_iter()
+            .map(|d| d.source_shape)
+            .collect()
+    }
+
+    let data =
+        "@prefix ex: <http://example.org/> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+        ex:a a ex:Person ; ex:age \"3\"^^xsd:integer .";
+
+    let first = source_shapes_for(data, "http://example.org/a");
+    let second = source_shapes_for(data, "http://example.org/a");
+
+    assert_eq!(
+        first, second,
+        "every source_shape must be identical across independent parses"
+    );
+    assert!(
+        first.iter().flatten().any(|s| !s.starts_with("_:")),
+        "the property shape's trace must not use a raw blank-node label: {first:?}"
+    );
+}

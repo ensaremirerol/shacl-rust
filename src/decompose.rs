@@ -34,6 +34,8 @@
 //! `QualifiedMinCountConstraintComponent` when `sh:qualifiedMinCount` is
 //! present, else `QualifiedMaxCountConstraintComponent`.
 
+use std::collections::HashMap;
+
 use sha2::{Digest, Sha256};
 
 use oxigraph::model::{NamedOrBlankNodeRef, TermRef};
@@ -338,11 +340,12 @@ impl ConstraintEntry {
 /// into its own nested shapes). `owner_id`/`role` feed the content hash;
 /// `path` is `""` for logical-constraint members (they have no path of their
 /// own) and the property shape's own canonical path for property shapes.
-fn decompose_nested(
-    shape: &Shape<'_>,
+fn decompose_nested<'a>(
+    shape: &'a Shape<'a>,
     owner_id: &str,
     role: &str,
     path: &str,
+    index: &mut HashMap<NamedOrBlankNodeRef<'a>, String>,
 ) -> (String, Vec<ConstraintEntry>) {
     // Own param set: every direct constraint's (component, canonical-params)
     // pair, in declaration order - this shape's content identity, distinct
@@ -388,10 +391,11 @@ fn decompose_nested(
             &closed_marker,
         ],
     );
+    index.insert(shape.node, shape_id.clone());
 
     let mut entries = Vec::new();
     for constraint in &shape.constraints {
-        entries.push(build_constraint_entry(constraint, &shape_id, None));
+        entries.push(build_constraint_entry(constraint, &shape_id, None, index));
     }
     if let Some(closed) = &shape.closed {
         entries.push(build_closed_entry(closed, &shape_id, None));
@@ -403,7 +407,7 @@ fn decompose_nested(
             .map(canonical_path)
             .unwrap_or_else(|| format!("<unpathed:{idx}>"));
         let (prop_shape_id, mut prop_entries) =
-            decompose_nested(prop_shape, &shape_id, "property", &prop_path);
+            decompose_nested(prop_shape, &shape_id, "property", &prop_path, index);
         for entry in &mut prop_entries {
             if entry.owner_property_shape.is_none() {
                 entry.owner_property_shape = Some(prop_shape_id.clone());
@@ -421,10 +425,11 @@ fn decompose_nested(
 /// shapes' own constraints into the caller's list - they live under
 /// `children`, per R-1's rule that logical constraints get one entry with a
 /// recursive `children` array.
-fn build_constraint_entry(
-    constraint: &Constraint<'_>,
+fn build_constraint_entry<'a>(
+    constraint: &'a Constraint<'a>,
     owner_id: &str,
     path: Option<String>,
+    index: &mut HashMap<NamedOrBlankNodeRef<'a>, String>,
 ) -> ConstraintEntry {
     let (child_ids, children): (Vec<String>, Option<Vec<ConstraintEntry>>) = match constraint {
         Constraint::And(AndConstraint(shapes))
@@ -438,7 +443,8 @@ fn build_constraint_entry(
             let mut ids = Vec::new();
             let mut child_entries = Vec::new();
             for member in shapes {
-                let (member_id, member_constraints) = decompose_nested(member, owner_id, role, "");
+                let (member_id, member_constraints) =
+                    decompose_nested(member, owner_id, role, "", index);
                 ids.push(member_id.clone());
                 child_entries.push(ConstraintEntry {
                     id: member_id,
@@ -457,7 +463,7 @@ fn build_constraint_entry(
             let role = matches!(constraint, Constraint::Not(_))
                 .then_some("not")
                 .unwrap_or("node");
-            let (id, entries) = decompose_nested(inner, owner_id, role, "");
+            let (id, entries) = decompose_nested(inner, owner_id, role, "", index);
             (
                 vec![id.clone()],
                 Some(vec![ConstraintEntry {
@@ -473,7 +479,8 @@ fn build_constraint_entry(
             )
         }
         Constraint::QualifiedValueShape(c) => {
-            let (id, entries) = decompose_nested(&c.shape, owner_id, "qualifiedValueShape", "");
+            let (id, entries) =
+                decompose_nested(&c.shape, owner_id, "qualifiedValueShape", "", index);
             (
                 vec![id.clone()],
                 Some(vec![ConstraintEntry {
@@ -549,21 +556,29 @@ fn target_to_json(target: &Target<'_>) -> Value {
 /// Decomposes one top-level (named or anonymous) shape into R-1's JSON
 /// shape object. `source` is this shape's declaring source name (R-3),
 /// `None` until named multi-source input exists.
-fn decompose_top_level_shape(shape: &Shape<'_>, source: Option<&str>) -> Value {
+fn decompose_top_level_shape<'a>(
+    shape: &'a Shape<'a>,
+    source: Option<&str>,
+    index: &mut HashMap<NamedOrBlankNodeRef<'a>, String>,
+) -> Value {
     let shape_id = match shape.node {
-        NamedOrBlankNodeRef::NamedNode(n) => hash_parts("shape", &["named", n.as_str()]),
+        NamedOrBlankNodeRef::NamedNode(n) => {
+            let id = hash_parts("shape", &["named", n.as_str()]);
+            index.insert(shape.node, id.clone());
+            id
+        }
         NamedOrBlankNodeRef::BlankNode(_) => {
             // Rare: an anonymous top-level shape. No IRI identity to hash;
             // fall back to the same content-derived scheme used for nested
             // shapes, with the synthetic "root" owner.
-            let (id, _) = decompose_nested(shape, "root", "root", "");
+            let (id, _) = decompose_nested(shape, "root", "root", "", index);
             id
         }
     };
 
     let mut flat_entries = Vec::new();
     for constraint in &shape.constraints {
-        let mut entry = build_constraint_entry(constraint, &shape_id, None);
+        let mut entry = build_constraint_entry(constraint, &shape_id, None, index);
         entry.severity = shape.severity.as_str().to_string();
         entry.messages = shape.message.iter().cloned().collect();
         flat_entries.push(entry);
@@ -581,7 +596,7 @@ fn decompose_top_level_shape(shape: &Shape<'_>, source: Option<&str>) -> Value {
             .map(canonical_path)
             .unwrap_or_else(|| format!("<unpathed:{idx}>"));
         let (prop_shape_id, mut prop_entries) =
-            decompose_nested(prop_shape, &shape_id, "property", &prop_path);
+            decompose_nested(prop_shape, &shape_id, "property", &prop_path, index);
         for entry in &mut prop_entries {
             if entry.owner_property_shape.is_none() {
                 entry.owner_property_shape = Some(prop_shape_id.clone());
@@ -627,9 +642,10 @@ pub fn decompose_shapes(
     source: Option<&str>,
     graph_triple_count: usize,
 ) -> Value {
+    let mut index = HashMap::new();
     let shape_values: Vec<Value> = shapes
         .iter()
-        .map(|s| decompose_top_level_shape(s, source))
+        .map(|s| decompose_top_level_shape(s, source, &mut index))
         .collect();
 
     let constraint_count: usize = shape_values
@@ -650,4 +666,24 @@ pub fn decompose_shapes(
             "triples": graph_triple_count,
         },
     })
+}
+
+/// Maps every shape reachable from `shapes` (top-level, property shapes,
+/// and members of logical constraints) to its stable `decompose_shapes` id,
+/// keyed by the shape's raw graph node. Lets validation/diagnostic code
+/// render a *stable* `source_shape` for a `ValidationResult` even when the
+/// shape itself is a blank node - `result.source_shape()` is only stable
+/// for the lifetime of one parse (fine as a `HashMap` key within that one
+/// run), but its `Display`/`.to_string()` is a per-run blank-node label,
+/// which is exactly the instability R-2 exists to fix. Named shapes are
+/// included too (mapping to the same `shape_id` `decompose_shapes` uses),
+/// even though their raw node's `.to_string()` (the IRI) was already
+/// stable - callers that always want the R-2 id rather than choosing
+/// per-case don't have to special-case named vs. blank-node shapes.
+pub fn shape_id_index<'a>(shapes: &'a [Shape<'a>]) -> HashMap<NamedOrBlankNodeRef<'a>, String> {
+    let mut index = HashMap::new();
+    for shape in shapes {
+        decompose_top_level_shape(shape, None, &mut index);
+    }
+    index
 }
