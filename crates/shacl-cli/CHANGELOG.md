@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.12](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.11...shacl-cli-v0.2.12) (2026-08-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * shacl-rust bumped from 0.2.11 to 0.2.12
+
 ## [0.2.11](https://github.com/ensaremirerol/shacl-rust/compare/shacl-cli-v0.2.10...shacl-cli-v0.2.11) (2026-07-31)
 
 
