@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.12](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.11...shacl-rust-v0.2.12) (2026-09-29)
+
+
+### Bug Fixes
+
+* **parser:** nested property shapes no longer inherit parent sh:severity ([5882175](https://github.com/ensaremirerol/shacl-rust/commit/5882175e65ab91be488cf21a4d08308bcd7cb1f5))
+* stable source_shape in validation diagnostics (closes R-2 Join gap) ([66d53fc](https://github.com/ensaremirerol/shacl-rust/commit/66d53fce5c39475260f574eb7acc4b93caed44b8))
+
 ## [0.2.11](https://github.com/ensaremirerol/shacl-rust/compare/shacl-rust-v0.2.10...shacl-rust-v0.2.11) (2026-07-31)
 
 
