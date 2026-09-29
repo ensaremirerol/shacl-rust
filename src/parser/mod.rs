@@ -135,15 +135,12 @@ fn apply_common_shape_properties<'a>(
 fn parse_nested_property_shapes<'a>(
     graph: &'a Graph,
     node: NamedOrBlankNodeRef<'a>,
-    parent_severity: NamedNodeRef<'a>,
     parent: Option<NamedOrBlankNodeRef<'a>>,
 ) -> Vec<Shape<'a>> {
     graph
         .objects_for_subject_predicate(node, sh::PROPERTY)
         .filter_map(parse_named_or_blank_node)
-        .filter_map(|nested_prop_node| {
-            parse_property_shape(graph, nested_prop_node, parent_severity, parent).ok()
-        })
+        .filter_map(|nested_prop_node| parse_property_shape(graph, nested_prop_node, parent).ok())
         .collect()
 }
 
@@ -195,7 +192,7 @@ fn parse_top_level_property_shape<'a>(
     }
 
     // Parse nested property shapes (sh:property on property shapes)
-    for nested_prop_shape in parse_nested_property_shapes(graph, node, severity, Some(node)) {
+    for nested_prop_shape in parse_nested_property_shapes(graph, node, Some(node)) {
         shape = shape
             .add_property_shape(nested_prop_shape)
             .with_parent(node);
@@ -259,7 +256,7 @@ fn parse_node_shape_internal<'a>(
     }
 
     // Parse property shapes (sh:property)
-    for prop_shape in parse_nested_property_shapes(graph, node, severity, Some(node)) {
+    for prop_shape in parse_nested_property_shapes(graph, node, Some(node)) {
         shape = shape.add_property_shape(prop_shape).with_parent(node);
     }
 
@@ -276,7 +273,6 @@ fn parse_node_shape_internal<'a>(
 fn parse_property_shape<'a>(
     graph: &'a Graph,
     node: NamedOrBlankNodeRef<'a>,
-    parent_severity: NamedNodeRef<'a>,
     parent: Option<NamedOrBlankNodeRef<'a>>,
 ) -> Result<Shape<'a>, ShaclError> {
     // Parse the path
@@ -289,7 +285,8 @@ fn parse_property_shape<'a>(
         ));
     };
 
-    let severity = parse_severity(graph, node, parent_severity);
+    // SHACL §2.1.5: severity is per shape, never inherited from the parent.
+    let severity = parse_severity(graph, node, sh::VIOLATION);
 
     // Parse constraints
     let constraints = parse_all_constraints(graph, node, true)?;
@@ -305,7 +302,7 @@ fn parse_property_shape<'a>(
     prop_shape = apply_common_shape_properties(graph, node, parent, prop_shape);
 
     // Parse nested property shapes (sh:property on property shapes)
-    for nested_prop_shape in parse_nested_property_shapes(graph, node, severity, Some(node)) {
+    for nested_prop_shape in parse_nested_property_shapes(graph, node, Some(node)) {
         prop_shape = prop_shape.add_property_shape(nested_prop_shape);
     }
 
