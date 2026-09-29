@@ -13,6 +13,7 @@ on:
 permissions:
     contents: write
     pull-requests: write
+    actions: write
 
 jobs:
     release-please:
@@ -20,6 +21,8 @@ jobs:
         if: github.actor != 'github-actions[bot]'
         outputs:
             releases_created: ${{ steps.release.outputs.releases_created }}
+            py_release_created: ${{ steps.release.outputs['crates/shacl-py--release_created'] }}
+            py_tag_name: ${{ steps.release.outputs['crates/shacl-py--tag_name'] }}
 
         steps:
             - name: Run release-please
@@ -30,6 +33,20 @@ jobs:
                   config-file: .github/release-please-config.json
                   manifest-file: .github/.release-please-manifest.json
                   target-branch: main
+
+    # Tags pushed with GITHUB_TOKEN don't trigger `on: push: tags`, so the
+    # shacl-py-v* tag never fires publish-python.yml by itself. workflow_dispatch
+    # is exempt from that rule, and keeps publish-python.yml as the workflow
+    # PyPI trusted publishing is registered against.
+    publish-python:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.py_release_created == 'true' }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Dispatch Publish Python on the release tag
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: gh workflow run publish-python.yml --repo ${{ github.repository }} --ref ${{ needs.release-please.outputs.py_tag_name }}
 
     publish-crates:
         needs: release-please
